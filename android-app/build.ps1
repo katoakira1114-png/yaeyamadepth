@@ -1,4 +1,4 @@
-# 八重山 水深マップ Android版のビルド（Windows、Android Studio が入ったPC用）
+﻿# 八重山 水深マップ Android版のビルド（Windows、Android Studio が入ったPC用）
 # 使い方: PowerShell で  powershell -ExecutionPolicy Bypass -File android-app\build.ps1
 # できるもの: リポジトリ直下の yaeyama-depth.apk（このPCのデバッグ鍵で署名。同じPCで作れば上書き更新できる）
 $ErrorActionPreference = 'Stop'
