@@ -202,7 +202,7 @@ function tapHit(sx, sy) {
 function wpAt(pt) { return wpts.find(w => { const [gx, gy] = ll2g(w.lat, w.lon); return Math.hypot(gx - pt[0], gy - pt[1]) < 1; }); }
 function tapExtra(pt) {
   const w = wpAt(pt);
-  return w ? `<br><b style="color:#ff8cc6">登録地点「${esc(w.name)}」</b>（${new Date(w.t).toLocaleString('ja-JP')}）${w.note ? `<div class="memo">${esc(w.note).replace(/\n/g, '<br>')}</div>` : ''}<br><button id="bTapEdit" data-id="${w.id}" style="margin-top:6px;padding:5px 12px">メモを${w.note ? '編集' : '書く'}</button>`
+  return w ? `<br><b style="color:#ff8cc6">登録地点「${esc(w.name)}」</b>（${new Date(w.t).toLocaleString('ja-JP')}）${w.note ? `<div class="memo">${esc(w.note).replace(/\n/g, '<br>')}</div>` : ''}<br><button id="bTapEdit" data-id="${w.id}" style="margin-top:6px;padding:5px 12px">メモを${w.note ? '編集' : '書く'}</button> <button id="bTapDel" data-id="${w.id}" style="margin-top:6px;padding:5px 12px;border-color:#ff8a80;color:#ffb3a8">この地点を削除</button>`
     : `<br><button id="bTapReg" style="margin-top:6px;padding:5px 12px">ここを地点登録</button>`;
 }
 function tapWire() {
@@ -210,6 +210,8 @@ function tapWire() {
   if (b) b.onclick = async () => { const [lat, lon] = g2ll(tapPt[0], tapPt[1]); const w = await addWaypoint(lat, lon); showTap(); openWpEdit(w); };
   const e = $('bTapEdit');
   if (e) e.onclick = () => openWpEdit(wpts.find(w => w.id === e.dataset.id));
+  const d = $('bTapDel');
+  if (d) d.onclick = async () => { if (await deleteWaypoint(wpts.find(w => w.id === d.dataset.id))) { tapPt = null; $('tap').hidden = true; requestDraw(); } };
 }
 
 // ---------- sheets ----------
@@ -227,7 +229,7 @@ $('wplist').onclick = async e => {
   const id = b.dataset.go || b.dataset.ren || b.dataset.del, w = wpts.find(x => x.id === id); if (!w) return;
   if (b.dataset.go) { $('wp').hidden = true; goTo(w.lat, w.lon); tapPt = ll2g(w.lat, w.lon); showTap(); }
   if (b.dataset.ren) openWpEdit(w);
-  if (b.dataset.del && confirm(`「${w.name}」を削除しますか？`)) { wpts = wpts.filter(x => x !== w); await saveWpts(); openWp(); requestDraw(); window.dispatchEvent(new Event('marks')); }
+  if (b.dataset.del && await deleteWaypoint(w)) openWp();
 };
 function goTo(lat, lon) { setFollow(false); const [gx, gy] = ll2g(lat, lon); view.cx = gx; view.cy = gy; if (view.s < 0.1 * dpr) view.s = 0.15 * dpr; requestDraw(); }
 $('bWp').onclick = openWp;
@@ -248,6 +250,17 @@ $('bWpeSave').onclick = async () => {
   if (!$('wp').hidden) openWp();
   if (tapPt && !$('tap').hidden) showTap();
 };
+$('bWpeDel').onclick = async () => {
+  if (!(await deleteWaypoint(wpEdit))) return;
+  stopDictation(); $('wpe').hidden = true;
+  if (!$('wp').hidden) openWp();
+  if (tapPt && !$('tap').hidden) { tapPt = null; $('tap').hidden = true; }
+};
+async function deleteWaypoint(w) {
+  if (!w || !confirm(`「${w.name}」を削除しますか？（メモも消えます）`)) return false;
+  wpts = wpts.filter(x => x !== w); await saveWpts(); requestDraw(); window.dispatchEvent(new Event('marks'));
+  toast(`「${w.name}」を削除しました`); return true;
+}
 $('bWpeCancel').onclick = () => { stopDictation(); $('wpe').hidden = true; };
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let rec = null;
