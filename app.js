@@ -360,6 +360,7 @@ function startGPS() {
 
 // ---------- download for offline use ----------
 function dataFiles() {
+  if (!META) return [];
   return [...(ENC ? ['data/key.json'] : []), ...['data/meta.json', 'data/base.png', 'data/struct.json',
     ...META.chunks.map(([i, j]) => `data/c/${i}_${j}.png`), ...META.hr.chunks.map(([i, j]) => `data/h/${i}_${j}.png`)].map(dataURL)];
 }
@@ -450,13 +451,37 @@ addEventListener('resize', resize);
 
 // ---------- start ----------
 (async function init() {
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator) {
+    // when an updated worker takes over, reload once so the page runs the new code
+    const hadSW = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadSW && !sessionStorage.getItem('swReload')) { sessionStorage.setItem('swReload', '1'); location.reload(); } });
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
   if (!localStorage.getItem('ack')) $('info').hidden = false;
   resize();
   try {
     const kr = await fetch('data/key.json').catch(() => null);
-    if (kr && kr.ok) { ENC = await kr.json(); await unlock(); }
-    META = JSON.parse(await (await getData('data/meta.json')).text());
+    if (kr && kr.ok) {
+      ENC = await kr.json();
+      // data re-encrypted with a new salt: everything saved under the old key is useless
+      const old = localStorage.getItem('salt');
+      if (old && old !== ENC.salt) {
+        ['k', 'dl'].forEach(k => localStorage.removeItem(k));
+        if ('caches' in window) await caches.delete(DATA_CACHE);
+      }
+      localStorage.setItem('salt', ENC.salt);
+    }
+    for (;;) {
+      if (ENC) await unlock();
+      try { META = JSON.parse(await (await getData('data/meta.json')).text()); break; }
+      catch (e) {
+        if (!ENC || e.name !== 'OperationError') throw e;
+        // key and data do not match (stale saved key or stale cached file): start over
+        localStorage.removeItem('k'); KEY = null;
+        if ('caches' in window) await caches.delete(DATA_CACHE);
+        $('lockmsg').textContent = 'もう一度、合言葉を入れてください。';
+      }
+    }
     CSET = new Set(META.chunks.map(([i, j]) => i + '_' + j)); HSET = new Set(META.hr.chunks.map(([i, j]) => i + '_' + j));
   } catch (e) { $('gps').textContent = 'データを読み込めません。電波のある所で一度開いてください。'; return; }
   getData('data/struct.json').then(b => b.text()).then(t => JSON.parse(t)).then(s => { STRUCT = s; requestDraw(); }).catch(() => {});

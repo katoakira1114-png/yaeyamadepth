@@ -1,14 +1,12 @@
 // Service Worker: app shell is precached; depth data lives in its own cache,
 // filled by the page's download button (and by any tile fetched while online).
-const SHELL = 'shell-v2';
+const SHELL = 'shell-v3';
 const DATA = 'yaeyama-data-v1';
 const SHELL_FILES = ['./', 'index.html', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
-const CORE_DATA = ['data/key.json', 'data/meta.json.enc', 'data/base.png.enc', 'data/struct.json.enc'];
 
 self.addEventListener('install', e => {
   e.waitUntil((async () => {
-    await (await caches.open(SHELL)).addAll(SHELL_FILES);
-    await (await caches.open(DATA)).addAll(CORE_DATA);
+    await (await caches.open(SHELL)).addAll(SHELL_FILES.map(u => new Request(u, {cache: 'reload'})));
     await self.skipWaiting();
   })());
 });
@@ -24,7 +22,12 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
   e.respondWith((async () => {
-    const isData = new URL(req.url).pathname.includes('/data/');
+    const path = new URL(req.url).pathname, isData = path.includes('/data/');
+    // key.json decides which data version is current: always ask the network first
+    if (path.endsWith('/data/key.json')) {
+      try { const r = await fetch(req, {cache: 'no-store'}); if (r.ok) { (await caches.open(DATA)).put(req, r.clone()); return r; } } catch (err) {}
+      return (await caches.match(req, {ignoreSearch: true})) || Response.error();
+    }
     const hit = await caches.match(req, {ignoreSearch: true});
     if (hit) {
       // app files: answer from cache, refresh in the background so the next launch gets updates
