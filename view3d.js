@@ -33,13 +33,13 @@ function setup() {
 #v3ctl{position:absolute;left:calc(var(--sl) + 8px);right:calc(var(--sr) + 8px);bottom:calc(var(--sb) + 64px);padding:8px 10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px}
 #v3ctl button{padding:7px 11px;font-size:13px}
 #v3ctl input[type=range]{flex:1;min-width:90px}
-#v3busy{position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);padding:10px 16px}
+#v3busy{position:absolute;left:50%;top:calc(var(--st) + 120px);transform:translateX(-50%);padding:6px 14px;font-size:13px}
 #v3busy[hidden]{display:none}
 #warn{z-index:6}`;
   document.head.appendChild(css);
   root = document.createElement('div'); root.id = 'v3'; root.hidden = true;
   root.innerHTML = `<canvas id="v3c"></canvas>
-<div id="v3top" class="card"><div><span style="color:var(--mute)">現在地の水深（推定）</span> <span class="big" id="v3d">—</span></div><div id="v3tap" style="color:var(--mute)">海底をタップすると、その地点の水深が出ます。現在地の印は海面（0m）に浮かんでいます。</div></div>
+<div id="v3top" class="card"><div><span style="color:var(--mute)">現在地の水深（推定）</span> <span class="big" id="v3d">—</span></div><div id="v3tap" style="color:var(--mute)">1本指でずらすと、その先の地形を読み込みます。2本指で拡大・回転・傾き。海底をタップすると水深。</div></div>
 <div id="v3ctl" class="card">
   <button id="v3back">◀ 地図に戻る</button>
   <button id="v3here">現在地を中心に</button>
@@ -56,8 +56,16 @@ function setup() {
   const sun = new THREE.DirectionalLight(0xffffff, 1.3); sun.position.set(-1, 2, -0.7); scene.add(sun);
   cam = new THREE.PerspectiveCamera(50, 1, 5, 80000);
   ctl = new OrbitControls(cam, $('v3c'));
-  ctl.enableDamping = true; ctl.maxPolarAngle = Math.PI * 0.49; ctl.minDistance = 60; ctl.maxDistance = 30000;
+  ctl.enableDamping = true; ctl.screenSpacePanning = false;
+  // map-like: one finger moves, two fingers zoom / turn / tilt
+  ctl.touches = {ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE};
+  ctl.mouseButtons = {LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE}; ctl.maxPolarAngle = Math.PI * 0.49; ctl.minDistance = 60; ctl.maxDistance = 30000;
   ctl.addEventListener('change', req);
+  window.__v3 = {ctl, get center() { return center; }}; // for testing
+  // after a drag that moved the view far from the loaded area, load the terrain around the new spot
+  ctl.addEventListener('end', () => {
+    if (Math.hypot(ctl.target.x, ctl.target.z) > R_IN * 0.6) { follow = false; moveCenter(center.gx + ctl.target.x, center.gy + ctl.target.z); }
+  });
 
   water = new THREE.Mesh(new THREE.PlaneGeometry(2 * R_OUT, 2 * R_OUT), new THREE.MeshBasicMaterial({color: 0x3fa9ff, transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide}));
   water.rotation.x = -Math.PI / 2; water.renderOrder = 5; scene.add(water);
@@ -139,15 +147,22 @@ function grid(R, step, hole) {
   const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({vertexColors: true}));
   mesh.userData.raw = raw; return mesh;
 }
+let pending = false;
 async function rebuild() {
-  if (building) return; building = true; $('v3busy').hidden = false;
+  if (building) { pending = true; return; }
+  building = true; $('v3busy').hidden = false;
+  const t0 = performance.now();
   try {
     await ensureTiles();
     clearTerrain();
     terrain.push(grid(R_IN, ST_IN, 0), grid(R_OUT, ST_OUT, R_IN - ST_OUT));
     terrain.forEach(m => scene.add(m));
     buildTrack(); buildMarks(); updateMe();
-  } finally { building = false; $('v3busy').hidden = true; req(); }
+    window.__v3ms = performance.now() - t0;
+  } finally {
+    building = false; $('v3busy').hidden = true; req();
+    if (pending) { pending = false; rebuild(); }
+  }
 }
 function moveCenter(gx, gy) {
   // keep the camera's angle and distance, aim at the new centre
