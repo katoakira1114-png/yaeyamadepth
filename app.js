@@ -28,7 +28,8 @@ async function unlock() {
     $('bUnlock').onclick = async () => {
       $('lockmsg').textContent = '確認中…';
       try {
-        const key = await deriveKey($('pass').value.trim()); await decrypt(unb64(ENC.check), key);
+        // phone keyboards capitalise / use full-width letters, so normalise before deriving
+        const key = await deriveKey($('pass').value.normalize('NFKC').trim().toLowerCase()); await decrypt(unb64(ENC.check), key);
         KEY = key; localStorage.setItem('k', b64(await crypto.subtle.exportKey('raw', key)));
         $('lock').hidden = true; done();
       } catch (e) { $('lockmsg').textContent = '合言葉が違います。'; }
