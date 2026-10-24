@@ -11,7 +11,9 @@ if (-not $env:JAVA_HOME -or -not (Test-Path "$env:JAVA_HOME\bin\java.exe")) {
   $env:JAVA_HOME = $cands | Where-Object { Test-Path "$_\bin\java.exe" } | Select-Object -First 1
   if (-not $env:JAVA_HOME) { throw 'Android Studio の JDK (jbr) が見つかりません。JAVA_HOME を JDK 21 に設定してください。' }
 }
-& "$env:JAVA_HOME\bin\java.exe" -version
+# java や gradle は警告を stderr に出す。Stop のままだと AIエージェント等から実行したとき、それだけで止まるので、ここからは Continue
+$ErrorActionPreference = 'Continue'
+& "$env:JAVA_HOME\bin\java.exe" -version 2>&1 | ForEach-Object { "$_" }
 
 # Android SDK の場所（local.properties）
 $lp = Join-Path $android 'local.properties'
@@ -22,10 +24,11 @@ if (-not (Test-Path $lp)) {
 }
 
 Push-Location $android
-try { & .\gradlew.bat --no-daemon assembleDebug; if ($LASTEXITCODE -ne 0) { throw "gradle が失敗しました（終了コード $LASTEXITCODE）" } }
+try { & .\gradlew.bat --no-daemon assembleDebug 2>&1 | ForEach-Object { "$_" }; if ($LASTEXITCODE -ne 0) { throw "gradle が失敗しました（終了コード $LASTEXITCODE）" } }
 finally { Pop-Location }
 
 $apk = Join-Path $android 'app\build\outputs\apk\debug\app-debug.apk'
 $out = Join-Path (Split-Path $here -Parent) 'yaeyama-depth.apk'
+if (-not (Test-Path $apk)) { throw "APK ができていません: $apk" }
 Copy-Item $apk $out -Force
 Write-Host "できました: $out"
