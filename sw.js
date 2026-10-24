@@ -1,8 +1,9 @@
 // Service Worker: app shell is precached; depth data lives in its own cache,
 // filled by the page's download button (and by any tile fetched while online).
-const SHELL = 'shell-v3';
+const SHELL = 'shell-v4';
 const DATA = 'yaeyama-data-v1';
-const SHELL_FILES = ['./', 'index.html', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
+const SHELL_FILES = ['./', 'index.html', 'app.js', 'extras.js', 'view3d.js', 'lib/three.module.min.js', 'lib/OrbitControls.js',
+  'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil((async () => {

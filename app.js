@@ -207,12 +207,12 @@ function clampView() {
   view.cx = Math.min(Math.max(view.cx, -W * 0.2), W * 1.2); view.cy = Math.min(Math.max(view.cy, -H * 0.2), H * 1.2);
 }
 function fitAll() { const W = META.nx * META.st, H = META.ny * META.st; view.cx = W / 2; view.cy = H / 2; view.s = Math.min(VW / W, VH / H) * 0.95; }
-let drawReq = false;
+let drawReq = false, paused2d = false; // paused while the 3D view is open
 function requestDraw() { if (!drawReq) { drawReq = true; requestAnimationFrame(draw); } }
 
 function draw() {
   drawReq = false;
-  if (!META) return;
+  if (!META || paused2d) return;
   clampView();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = '#0a1640'; ctx.fillRect(0, 0, VW, VH);
@@ -246,6 +246,7 @@ function draw() {
       ctx.stroke();
     }
   }
+  if (typeof drawOverlays === 'function') drawOverlays();
   // tapped point
   if (tapPt) { const [sx, sy] = g2s(tapPt[0], tapPt[1]); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.moveTo(sx - 9 * dpr, sy); ctx.lineTo(sx + 9 * dpr, sy); ctx.moveTo(sx, sy - 9 * dpr); ctx.lineTo(sx, sy + 9 * dpr); ctx.stroke(); }
   // current position
@@ -315,6 +316,7 @@ function describe(r) {
 }
 let tapPt = null, here = null;
 async function onTap(sx, sy) {
+  if (typeof tapHit === 'function' && tapHit(sx, sy)) return;
   const [gx, gy] = s2g(sx, sy); tapPt = [gx, gy]; requestDraw();
   showTap();
 }
@@ -323,9 +325,10 @@ async function showTap() {
   const r = await depthAt(tapPt[0], tapPt[1]), ds = describe(r), [lat, lon] = g2ll(tapPt[0], tapPt[1]);
   let dist = '';
   if (here) { const m = Math.hypot(here.gx - tapPt[0], here.gy - tapPt[1]); dist = ` ・ 現在地から ${m >= 1000 ? (m / 1000).toFixed(2) + ' km' : Math.round(m) + ' m'}`; }
-  $('tap').innerHTML = `<b>タップした地点:</b> ${ds.big}${ds.unit ? ' ' + ds.unit : ''}${r && r.d >= 0 ? `（${r.res}m格子）` : ''}<br>${fmtDM(lat, '北緯', '南緯')} ${fmtDM(lon, '東経', '西経')}${dist}<span class="x" id="tapx">✕</span>`;
+  $('tap').innerHTML = `<b>タップした地点:</b> ${ds.big}${ds.unit ? ' ' + ds.unit : ''}${r && r.d >= 0 ? `（${r.res}m格子）` : ''}<br>${fmtDM(lat, '北緯', '南緯')} ${fmtDM(lon, '東経', '西経')}${dist}<span class="x" id="tapx">✕</span>${typeof tapExtra === 'function' ? tapExtra(tapPt) : ''}`;
   $('tap').hidden = false;
   $('tap').style.top = $('top').getBoundingClientRect().bottom + 8 + 'px';
+  if (typeof tapWire === 'function') tapWire();
   $('tapx').onclick = () => { tapPt = null; $('tap').hidden = true; requestDraw(); };
 }
 async function showHere() {
@@ -348,7 +351,9 @@ function startGPS() {
   let first = true;
   navigator.geolocation.watchPosition(p => {
     const {latitude: lat, longitude: lon, accuracy: acc} = p.coords, [gx, gy] = ll2g(lat, lon);
-    here = {lat, lon, acc, gx, gy};
+    here = {lat, lon, acc, gx, gy, t: Date.now()};
+    if (typeof onFix === 'function') onFix(p);
+    window.dispatchEvent(new Event('fix'));
     if (follow) { view.cx = gx; view.cy = gy; if (first && view.s < 0.1 * dpr) view.s = 0.12 * dpr; }
     first = false;
     requestDraw(); showHere();
@@ -490,5 +495,6 @@ addEventListener('resize', resize);
   requestDraw();
   startGPS(); setFollow(true);
   checkBanner();
+  if (typeof extrasInit === 'function') extrasInit();
   window.__app = {depthAt, ll2g, g2ll, view, tiles, cacheStatus}; // for testing
 })();

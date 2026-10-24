@@ -29,11 +29,11 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:15px/1.
 #tap{position:fixed;left:calc(var(--sl) + 8px);top:calc(var(--st) + 92px);padding:8px 12px;font-size:13px;max-width:calc(100% - 16px)}
 #tap[hidden]{display:none}
 #tap .x{margin-left:10px;color:var(--mute);cursor:pointer}
-#btns{position:fixed;right:calc(var(--sr) + 10px);bottom:calc(var(--sb) + 64px);display:flex;flex-direction:column;gap:10px}
+#btns{position:fixed;right:calc(var(--sr) + 10px);bottom:calc(var(--sb) + 64px);display:flex;flex-direction:column;gap:8px}
 button{font:inherit;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 14px;cursor:pointer}
 button:active{transform:scale(.97)}
-.round{width:52px;height:52px;padding:0;display:grid;place-items:center;border-radius:50%}
-.round svg{width:26px;height:26px}
+.round{width:46px;height:46px;padding:0;display:grid;place-items:center;border-radius:50%}
+.round svg{width:23px;height:23px}
 .round.on{background:#1f6fd6;border-color:#5aa0ff}
 #legend{position:fixed;left:calc(var(--sl) + 8px);bottom:calc(var(--sb) + 64px);padding:8px 10px;font-size:11px;color:var(--mute)}
 #legend canvas{display:block;width:150px;height:10px;border-radius:2px;margin:3px 0 1px}
@@ -55,6 +55,19 @@ button:active{transform:scale(.97)}
 .note{border-left:3px solid var(--acc);padding:6px 10px;background:rgba(255,106,69,.1);border-radius:4px}
 .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .pri{background:#1f6fd6;border-color:#5aa0ff}
+.li{display:flex;gap:8px;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.li small{color:var(--mute)}
+.ops{display:flex;gap:4px;flex-shrink:0}.ops button{padding:6px 9px;font-size:13px}
+.memo{margin-top:4px;padding:6px 8px;background:rgba(255,255,255,.07);border-radius:6px;font-size:13px;white-space:pre-wrap;max-height:9em;overflow:auto}
+.th{width:72px;height:72px;object-fit:cover;border-radius:8px;margin:0 6px 6px 0;cursor:pointer;background:#123}
+.fld{width:100%;font:inherit;padding:10px;border-radius:10px;border:1px solid var(--line);background:#0d1d52;color:var(--fg)}
+textarea.fld{min-height:7em;resize:vertical}
+select.fld{padding:8px}
+#bMic.on{background:#c62828;border-color:#ff8a80}
+#toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(var(--st) + 140px);z-index:30;padding:10px 14px;font-size:14px;max-width:calc(100% - 32px);text-align:center}
+#toast[hidden]{display:none}
+#phimg{width:100%;max-height:60vh;object-fit:contain;border-radius:8px;background:#000}
+label.sw{display:flex;gap:8px;align-items:center;margin:8px 0;font-size:14px}
 progress{width:100%;height:10px;accent-color:#5aa0ff}
 #dlmsg{font-size:13px;color:var(--mute)}
 </style>
@@ -75,6 +88,10 @@ progress{width:100%;height:10px;accent-color:#5aa0ff}
 <div id="banner" class="card" hidden></div>
 
 <div id="btns">
+  <button class="round" id="b3d" title="立体表示" aria-label="立体表示"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg></button>
+  <button class="round" id="bTrk" title="航跡と写真" aria-label="航跡と写真"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19c3 0 3-6 7-6s3 4 6 4 3-6 3-6"/><circle cx="4" cy="19" r="1.5"/></svg></button>
+  <button class="round" id="bWp" title="地点" aria-label="地点"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-5.5-6-11a6 6 0 0112 0c0 5.5-6 11-6 11z"/><circle cx="12" cy="10" r="2"/></svg></button>
+  <button class="round" id="bCam" title="写真を撮る" aria-label="写真を撮る"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
   <button class="round" id="bInfo" title="注意と出典" aria-label="注意と出典"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg></button>
   <button class="round" id="bDl" title="ダウンロード" aria-label="ダウンロード"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></button>
   <button class="round" id="bLoc" title="現在地に移動" aria-label="現在地に移動"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></button>
@@ -88,6 +105,62 @@ progress{width:100%;height:10px;accent-color:#5aa0ff}
 </div>
 
 <div id="warn"><b>注意:</b> 水深は推定値です。航行や潜水の安全判断には使えません。出典: 海釣図V、Copernicus Sentinel-2、© OpenStreetMap contributors（タップで詳細）</div>
+
+<input type="file" id="cam" accept="image/*" capture="environment" hidden>
+<input type="file" id="imp" accept="image/*" multiple hidden>
+<div id="toast" class="card" hidden></div>
+
+<div class="sheet" id="wp" hidden>
+  <div class="card">
+    <h2>地点</h2>
+    <div class="row" style="margin:0 0 6px"><button class="pri" id="bWpHere">現在地を登録</button></div>
+    <p><small>地図をタップして「ここを地点登録」でも登録できます。ピンをタップするとメモが読めます。</small></p>
+    <div id="wplist"></div>
+    <div class="row"><button id="bWpGpx">書き出し（GPX）</button><button id="bWpClose">閉じる</button></div>
+  </div>
+</div>
+
+<div class="sheet" id="wpe" hidden style="z-index:12">
+  <div class="card">
+    <h2>地点のメモ</h2>
+    <p id="wpeinfo" style="color:var(--mute);font-size:13px"></p>
+    <p><input id="wpename" class="fld" placeholder="名前"></p>
+    <p><textarea id="wpenote" class="fld" placeholder="メモ（キーボードのマイクでも音声入力できます）"></textarea></p>
+    <div class="row">
+      <button id="bMic">🎤 音声で入力</button>
+      <button class="pri" id="bWpeSave">保存</button>
+      <button id="bWpeCancel">やめる</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet" id="trk" hidden>
+  <div class="card">
+    <h2>航跡と写真</h2>
+    <p><select id="trkday" class="fld"></select></p>
+    <p id="trkstat"></p>
+    <label class="sw"><input type="checkbox" id="trkshow" checked> 地図に航跡を表示</label>
+    <label class="sw"><input type="checkbox" id="wake"> 画面を消さない（記録を続ける）</label>
+    <p><small>アプリを開いている間、自動で記録します。画面を消したり、ほかのアプリに切り替えたりすると、その間は記録が止まります。</small></p>
+    <h3>この日の写真</h3>
+    <div id="phlist"></div>
+    <div class="row">
+      <button id="bImp">写真を読み込む</button>
+      <button id="bTrkGpx">書き出し（GPX）</button>
+      <button id="bTrkDel">この日の航跡を消す</button>
+      <button id="bTrkClose">閉じる</button>
+    </div>
+    <p><small>「写真を読み込む」: 写真アプリの写真に、写真の位置情報か、撮った時刻と航跡から場所を付けます。</small></p>
+  </div>
+</div>
+
+<div class="sheet" id="ph" hidden style="z-index:12">
+  <div class="card">
+    <img id="phimg" alt="写真">
+    <p id="phinfo" style="font-size:13px"></p>
+    <div class="row"><button id="bPhMap">地図で見る</button><button id="bPhDel">削除</button><button class="pri" id="bPhClose">閉じる</button></div>
+  </div>
+</div>
 
 <div class="sheet" id="info" hidden>
   <div class="card">
@@ -128,5 +201,6 @@ progress{width:100%;height:10px;accent-color:#5aa0ff}
 </div>
 
 <script src="app.js"></script>
+<script src="extras.js"></script>
 </body>
 </html>
