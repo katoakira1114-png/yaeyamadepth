@@ -1,0 +1,8 @@
+{
+	"appId": "jp.yaeyama.depthmap",
+	"appName": "八重山水深マップ",
+	"webDir": "www",
+	"android": {
+		"allowMixedContent": false
+	}
+}

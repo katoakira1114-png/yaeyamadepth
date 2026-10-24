@@ -346,21 +346,24 @@ function setFollow(on) {
   follow = on; $('bLoc').classList.toggle('on', on);
   if (on && here) { view.cx = here.gx; view.cy = here.gy; if (view.s < 0.1 * dpr) view.s = 0.12 * dpr; requestDraw(); }
 }
+let firstFix = true;
 function startGPS() {
+  if (NATIVE) { NATIVE.startGPS(onPosition, onPosError).catch(() => onPosError({code: 2})); return; }
   if (!('geolocation' in navigator)) { $('gps').textContent = 'この端末では位置情報が使えません'; return; }
-  let first = true;
-  navigator.geolocation.watchPosition(p => {
-    const {latitude: lat, longitude: lon, accuracy: acc} = p.coords, [gx, gy] = ll2g(lat, lon);
-    here = {lat, lon, acc, gx, gy, t: Date.now()};
-    if (typeof onFix === 'function') onFix(p);
-    window.dispatchEvent(new Event('fix'));
-    if (follow) { view.cx = gx; view.cy = gy; if (first && view.s < 0.1 * dpr) view.s = 0.12 * dpr; }
-    first = false;
-    requestDraw(); showHere();
-  }, err => {
-    const m = {1: '位置情報の利用が許可されていません。端末の設定で、このアプリ（またはブラウザ）に位置情報を許可してください。', 2: '位置を取得できません（屋内や電波の状況を確認してください）', 3: '位置の取得に時間がかかっています…'}[err.code] || '位置を取得できません';
-    $('gps').textContent = m;
-  }, {enableHighAccuracy: true, maximumAge: 2000, timeout: 30000});
+  navigator.geolocation.watchPosition(onPosition, onPosError, {enableHighAccuracy: true, maximumAge: 2000, timeout: 30000});
+}
+function onPosition(p) {
+  const {latitude: lat, longitude: lon, accuracy: acc} = p.coords, [gx, gy] = ll2g(lat, lon);
+  here = {lat, lon, acc, gx, gy, t: Date.now()};
+  if (typeof onFix === 'function') onFix(p);
+  window.dispatchEvent(new Event('fix'));
+  if (follow) { view.cx = gx; view.cy = gy; if (firstFix && view.s < 0.1 * dpr) view.s = 0.12 * dpr; }
+  firstFix = false;
+  requestDraw(); showHere();
+}
+function onPosError(err) {
+  const m = {1: '位置情報の利用が許可されていません。端末の設定で、このアプリ（またはブラウザ）に位置情報を許可してください。', 2: '位置を取得できません（屋内や電波の状況を確認してください）', 3: '位置の取得に時間がかかっています…'}[err.code] || '位置を取得できません';
+  $('gps').textContent = m;
 }
 
 // ---------- download for offline use ----------
@@ -371,6 +374,7 @@ function dataFiles() {
 }
 const fmtMB = b => (b / 1048576).toFixed(1) + ' MB';
 async function cacheStatus() {
+  if (NATIVE) return {ok: true, have: dataFiles().length, total: dataFiles().length}; // the app ships with the data
   if (!('caches' in window)) return {ok: false, have: 0, total: dataFiles().length};
   const cache = await caches.open(DATA_CACHE), keys = new Set((await cache.keys()).map(r => new URL(r.url).pathname));
   const files = dataFiles(), have = files.filter(f => keys.has(new URL(f, location.href).pathname)).length;
@@ -456,7 +460,7 @@ addEventListener('resize', resize);
 
 // ---------- start ----------
 (async function init() {
-  if ('serviceWorker' in navigator) {
+  if (!NATIVE && 'serviceWorker' in navigator) {
     // when an updated worker takes over, reload once so the page runs the new code
     const hadSW = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadSW && !sessionStorage.getItem('swReload')) { sessionStorage.setItem('swReload', '1'); location.reload(); } });

@@ -47,7 +47,8 @@ function onFix(p) {
     if (m < 1) return;
   }
   trk.pts.push([t, +lat.toFixed(6), +lon.toFixed(6), Math.round(acc)]); trkDirty = true;
-  clearTimeout(onFix.h); onFix.h = setTimeout(saveTrack, 2000); // the page can be killed at any moment on a phone
+  clearTimeout(onFix.h);
+  if (document.hidden) saveTrack(); else onFix.h = setTimeout(saveTrack, 2000); // the page can be killed at any moment on a phone
   window.dispatchEvent(new Event('trackchange'));
 }
 function trackStats(pts) {
@@ -264,6 +265,13 @@ let rec = null;
 function stopDictation() { if (rec) { try { rec.stop(); } catch (e) {} rec = null; } $('bMic').classList.remove('on'); }
 $('bMic').onclick = () => {
   if (rec) { stopDictation(); return; }
+  if (NATIVE) {
+    const ta = $('wpenote'), base = ta.value ? ta.value.replace(/\s*$/, '') + '\n' : '';
+    rec = {stop: NATIVE.stopDictate}; $('bMic').classList.add('on'); toast('話してください（もう一度押すと終了）');
+    NATIVE.dictate(txt => { ta.value = base + txt; }, () => { rec = null; $('bMic').classList.remove('on'); })
+      .catch(e => { toast(e.message === 'not-allowed' ? 'マイクの使用が許可されていません' : '音声認識が使えません。キーボードのマイクを使ってください'); rec = null; $('bMic').classList.remove('on'); });
+    return;
+  }
   if (!SR) { toast('この端末ではマイクボタンが使えません。キーボードのマイクで音声入力してください'); return; }
   const ta = $('wpenote'), base = ta.value ? ta.value.replace(/\s*$/, '') + '\n' : '';
   rec = new SR(); rec.lang = 'ja-JP'; rec.interimResults = true; rec.continuous = true;
@@ -292,7 +300,7 @@ async function openTrack(day) {
     kv.get('th:' + p.id).then(b => { if (b) im.src = URL.createObjectURL(b); });
     $('phlist').appendChild(im);
   }
-  $('trkshow').checked = showTrack; $('wake').checked = wakeOn;
+  $('trkshow').checked = showTrack; $('wake').checked = wakeOn; $('bgrec').checked = localStorage.getItem('bgrec') !== '0';
   $('trk').hidden = false; requestDraw(); window.dispatchEvent(new Event('trackchange'));
 }
 $('bTrk').onclick = () => openTrack();
@@ -342,6 +350,7 @@ async function exportGPX(name, pts, wps, phs) {
     .map(w => `<wpt lat="${w.lat}" lon="${w.lon}"><time>${iso(w.t)}</time><name>${esc(w.n)}</name>${w.d != null ? `<desc>推定水深 ${w.d} m</desc>` : ''}</wpt>`).join('\n');
   const tr = pts.length ? `<trk><name>${esc(name)}</name><trkseg>\n${pts.map(p => `<trkpt lat="${p[1]}" lon="${p[2]}"><time>${iso(p[0])}</time></trkpt>`).join('\n')}\n</trkseg></trk>` : '';
   const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="八重山 水深マップ" xmlns="http://www.topografix.com/GPX/1/1">\n${wx}\n${tr}\n</gpx>\n`;
+  if (NATIVE) { try { await NATIVE.shareFile(name + '.gpx', gpx); } catch (e) { if (!/cancel/i.test(e.message || '')) toast('書き出せませんでした'); } return; }
   const file = new File([gpx], name + '.gpx', {type: 'application/gpx+xml'});
   try { if (navigator.canShare && navigator.canShare({files: [file]})) { await navigator.share({files: [file]}); return; } } catch (e) { if (e.name === 'AbortError') return; }
   const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = file.name; document.body.appendChild(a); a.click(); a.remove();
@@ -365,6 +374,11 @@ const API3 = {
   track: () => showTrack ? curShown() : [], wpts: () => wpts, photos: () => photos, openPhoto, toast,
   pause2d: on => { paused2d = on; if (!on) requestDraw(); },
 };
+
+if (NATIVE) {
+  ['wakeRow', 'trkNoteWeb', 'bDl'].forEach(id => { $(id).hidden = true; }); ['bgRow', 'trkNoteApp'].forEach(id => { $(id).hidden = false; });
+  $('bgrec').onchange = e => { localStorage.setItem('bgrec', e.target.checked ? '1' : '0'); startGPS(); toast(e.target.checked ? '画面を消しても記録します' : 'アプリを開いている間だけ記録します'); };
+}
 
 async function extrasInit() {
   [wpts, photos] = [(await kv.get('wpts').catch(() => null)) || [], (await kv.get('photos').catch(() => null)) || []];

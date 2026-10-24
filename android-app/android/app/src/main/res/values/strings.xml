@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">八重山水深マップ</string>
+    <string name="title_activity_main">八重山水深マップ</string>
+    <string name="package_name">jp.yaeyama.depthmap</string>
+    <string name="custom_url_scheme">jp.yaeyama.depthmap</string>
+</resources>

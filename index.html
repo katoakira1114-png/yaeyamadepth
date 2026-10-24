@@ -17,6 +17,7 @@
 :root{--bg:#0a1640;--panel:rgba(10,22,64,.92);--fg:#f2f6ff;--mute:#a9b8d8;--acc:#ff6a45;--line:rgba(255,255,255,.18);
   --st:env(safe-area-inset-top,0px);--sb:env(safe-area-inset-bottom,0px);--sl:env(safe-area-inset-left,0px);--sr:env(safe-area-inset-right,0px)}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;overflow:hidden;overscroll-behavior:none}
 #map{position:fixed;inset:0;width:100%;height:100%;touch-action:none;display:block;background:#0a1640}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
@@ -143,8 +144,10 @@ progress{width:100%;height:10px;accent-color:#5aa0ff}
     <p><select id="trkday" class="fld"></select></p>
     <p id="trkstat"></p>
     <label class="sw"><input type="checkbox" id="trkshow" checked> 地図に航跡を表示</label>
-    <label class="sw"><input type="checkbox" id="wake"> 画面を消さない（記録を続ける）</label>
-    <p><small>アプリを開いている間、自動で記録します。画面を消したり、ほかのアプリに切り替えたりすると、その間は記録が止まります。</small></p>
+    <label class="sw" id="wakeRow"><input type="checkbox" id="wake"> 画面を消さない（記録を続ける）</label>
+    <label class="sw" id="bgRow" hidden><input type="checkbox" id="bgrec"> 画面を消しても記録する（通知が出ます）</label>
+    <p id="trkNoteWeb"><small>アプリを開いている間、自動で記録します。画面を消したり、ほかのアプリに切り替えたりすると、その間は記録が止まります。</small></p>
+    <p id="trkNoteApp" hidden><small>オンの間は、画面を消しても、ほかのアプリを使っていても記録します（通知に「航跡を記録しています」と出ます）。止めるにはオフにしてください。記録が途中で止まる場合は、端末の設定でこのアプリの電池を「制限なし」にしてください。</small></p>
     <h3>この日の写真</h3>
     <div id="phlist"></div>
     <div class="row">
@@ -203,6 +206,7 @@ progress{width:100%;height:10px;accent-color:#5aa0ff}
   </div>
 </div>
 
+<script src="native.js"></script>
 <script src="app.js"></script>
 <script src="extras.js"></script>
 </body>
