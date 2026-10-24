@@ -5,7 +5,7 @@ Capacitor 7 のアプリに詰めたものです。アプリ固有のコード�
 Webサイトと同じファイルがそのまま使われます。データは暗号化されたまま入っていて、初回に合言葉を聞きます。
 
 ## 必要なもの
-- Windows PC と Android Studio（Ladybug 2024.2 以降。JDK 21 が同梱されているもの）
+- Windows PC と Android Studio（バージョンは問わない。JDK 21 は build.ps1 が自動で用意する）
 - Android SDK Platform 35（なければ Android Studio の SDK Manager で入れる）
 - Node.js は不要（プラグインのソースは android-app/vendor/ に同梱済み）
 
@@ -37,7 +37,7 @@ Android Studio で開く場合は `android-app/android` フォルダを開き、
 7. data/ の中身（*.enc, key.json）を開いたり、復号したり、作り直したりしない。合言葉をファイルに書かない。
 8. 変更してよいのは次だけ: `android-app/android/local.properties`（SDKの場所）、JAVA_HOME などの環境変数、Android Studio の SDK Manager での SDK の追加。
 9. エラーが出たら、勝手に別の方法を試さず、**エラーメッセージ全文**と実行したコマンドを報告して止まる。よくある原因:
-   - `Unsupported class file major version` / `invalid source release: 21` → JAVA_HOME が JDK 21 でない。Android Studio の jbr を指す。
+   - `Unsupported class file major version` / `invalid source release: 21` → Java のバージョンが合わない（Gradle 8.11 は Java 17〜23 でしか動かない。Android Studio 同梱の jbr が Java 25 のことがある）。build.ps1 は合う JDK を探し、なければ JDK 21 を android-app\.jdk21 に自動で取ってくる。最新の build.ps1 を `git pull` で取ってから再実行する。Gradle や AGP のバージョンを上げて解決しようとしてはいけない。
    - `SDK location not found` → local.properties の sdk.dir を SDK Manager に表示される場所にする。
    - `Failed to find target with hash string 'android-35'` → SDK Manager で Android 15 (API 35) の SDK Platform を入れる。
 10. 完了の報告は「APKのパス」「ファイルサイズ」「build.ps1 の最後の出力」だけ。推測で「動作確認済み」と書かない。
