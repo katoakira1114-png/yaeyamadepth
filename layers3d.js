@@ -117,10 +117,42 @@ export function landLines(cx, cy, R, ve, height) {
       col.push(c[0], c[1], c[2], c[0], c[1], c[2]);
     }
   };
-  for (const [, o] of land.rivers) add(dec(o), [0.2, 0.55, 1], false, 8);
   for (const o of land.water) add(dec(o), [0.2, 0.55, 1], true, 8);
   for (const [k, o] of land.roads) add(dec(o), ROAD_COL[k] || ROAD_COL[4], false, 6);
   if (!pos.length) return null;
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   return new THREE.LineSegments(g, new THREE.LineBasicMaterial({vertexColors: true}));
+}
+
+// River ribbons: OSM gives centrelines only, so the width is assumed per waterway type (river 12 m, stream 4 m, drains 2.5 m).
+export function riverMesh(cx, cy, R, ve, height) {
+  if (!land) return null;
+  const pos = [], idx = [];
+  for (const [w, o] of land.rivers) {
+    const p = dec(o), n = p.length / 2; if (n < 2) continue;
+    if (Math.abs(p[0] - cx) > R * 1.5 && Math.abs(p[2 * n - 2] - cx) > R * 1.5) continue;
+    const base = pos.length / 3; let ok = 0;
+    for (let i = 0; i < n; i++) {
+      const a = Math.max(i - 1, 0), b = Math.min(i + 1, n - 1);
+      let dx = p[2 * b] - p[2 * a], dz = p[2 * b + 1] - p[2 * a + 1]; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+      const x = p[2 * i] - cx, z = p[2 * i + 1] - cy, h = Math.max(height(x, z), 0) * ve + 3, hw = w / 2;
+      pos.push(x - dz * hw, h, z + dx * hw, x + dz * hw, h, z - dx * hw);
+      if (Math.abs(x) < R && Math.abs(z) < R) ok++;
+      if (i) { const q = base + 2 * (i - 1); idx.push(q, q + 1, q + 2, q + 1, q + 3, q + 2); }
+    }
+    if (!ok) { pos.length = base * 3; idx.length = idx.length - 6 * (n - 1); }
+  }
+  // ponds and riverbanks: flat fill at their lowest bank height
+  for (const o of land.water) {
+    const p = dec(o), n = p.length / 2; if (n < 3) continue;
+    const v = [], hs = []; let ok = false;
+    for (let i = 0; i < n; i++) { const x = p[2 * i] - cx, z = p[2 * i + 1] - cy; v.push(new THREE.Vector2(x, z)); hs.push(Math.max(height(x, z), 0)); if (Math.abs(x) < R && Math.abs(z) < R) ok = true; }
+    if (!ok) continue;
+    const h = Math.min(...hs) * ve + 3, tri = THREE.ShapeUtils.triangulateShape(v, []), base = pos.length / 3;
+    for (const q of v) pos.push(q.x, h, q.y);
+    for (const t of tri) idx.push(base + t[0], base + t[1], base + t[2]);
+  }
+  if (!idx.length) return null;
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx);
+  return new THREE.Mesh(g, new THREE.MeshBasicMaterial({color: 0x2f7fe8, side: THREE.DoubleSide, transparent: true, opacity: 0.88}));
 }

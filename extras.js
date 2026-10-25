@@ -382,7 +382,7 @@ const ROAD_W = ['#f0b040', '#f5d880', '#ececdf', '#d8d8d8', '#b8b8b8'];
 $('bLand').onclick = async () => {
   landOn = !landOn; $('bLand').classList.toggle('on', landOn);
   if (landOn && !landData) {
-    try { const d = JSON.parse(await (await getData('data/v3/land.json')).text()); landData = {rivers: d.rivers.map(([k, o]) => [k, decL(o)]), water: d.water.map(decL), roads: d.roads.map(([k, o]) => [k, decL(o)])}; }
+    try { const d = JSON.parse(await (await getData('data/v3/land.json')).text()); landData = {rivers: d.rivers.map(([w, o]) => [w, decL(o)]), water: d.water.map(decL), roads: d.roads.map(([k, o]) => [k, decL(o)])}; }
     catch (e) { toast('川・道路のデータを読み込めませんでした'); landOn = false; $('bLand').classList.remove('on'); return; }
   }
   toast(landOn ? '川・池・道路を表示（石垣島。OpenStreetMap）' : '川・池・道路: なし');
@@ -395,8 +395,8 @@ function drawLand() {
   ctx.fillStyle = 'rgba(60,140,255,0.55)'; ctx.strokeStyle = '#3c8cff'; ctx.lineWidth = 1;
   for (const w of landData.water) { ctx.beginPath(); path(w, true); ctx.fill(); ctx.stroke(); }
   for (const [k, pts] of landData.roads) { ctx.strokeStyle = ROAD_W[k] || ROAD_W[4]; ctx.lineWidth = Math.max(0.6, (k < 2 ? 5 : 3) * view.s); ctx.beginPath(); path(pts); ctx.stroke(); }
-  ctx.strokeStyle = '#2f80ff'; ctx.lineWidth = Math.max(1.2, 4 * view.s);
-  for (const [, pts] of landData.rivers) { ctx.beginPath(); path(pts); ctx.stroke(); }
+  ctx.strokeStyle = '#2f80ff';
+  for (const [w, pts] of landData.rivers) { ctx.lineWidth = Math.max(1.4, w * view.s); ctx.beginPath(); path(pts); ctx.stroke(); }
   ctx.restore();
 }
 
