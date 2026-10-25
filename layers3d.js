@@ -102,6 +102,15 @@ export function drapeMesh(geo) {
   m.renderOrder = 1; return m;
 }
 
+let benTex = null;
+// seabed classes (Allen Coral Atlas) as the topmost layer: a transparent copy of the terrain above the satellite drape
+export function benthicOverlay(geo) {
+  if (!ben) return null;
+  if (!benTex) { const c = document.createElement('canvas'); c.width = ben.w; c.height = ben.h; c.getContext('2d').drawImage(ben.bmp, 0, 0); benTex = new THREE.CanvasTexture(c); benTex.colorSpace = THREE.SRGBColorSpace; benTex.anisotropy = 4; benTex.wrapS = benTex.wrapT = THREE.ClampToEdgeWrapping; benTex.magFilter = THREE.NearestFilter; }
+  const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({map: benTex, transparent: true, alphaTest: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4}));
+  m.renderOrder = 2; return m;
+}
+
 // ---- rivers, water bodies, roads (OpenStreetMap, via the handoff land-001 job) ----
 const dec = o => { const p = []; let x = o[0], y = o[1]; p.push(x, y); for (let i = 2; i < o.length; i += 2) { x += o[i]; y += o[i + 1]; p.push(x, y); } return p; };
 const ROAD_COL = [[0.95, 0.75, 0.3], [0.95, 0.85, 0.5], [0.92, 0.92, 0.88], [0.85, 0.85, 0.85], [0.7, 0.7, 0.7]];

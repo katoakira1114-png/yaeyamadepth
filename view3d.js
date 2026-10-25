@@ -179,7 +179,9 @@ async function rebuild() {
 }
 function addDrapes() {
   for (const m of drapes) { scene.remove(m); m.material.dispose(); } drapes = [];
-  if (!L || !L.hasDrape() || !opt.drape) return;
+  if (!L) return;
+  if (opt.bot === 3) for (const t of terrain) { if (!t.geometry.attributes.uv) L.drapeUV(t.geometry, center.gx, center.gy); const d = L.benthicOverlay(t.geometry); if (d) { drapes.push(d); scene.add(d); } }
+  if (!L.hasDrape() || !opt.drape) return;
   for (const t of terrain) { if (!t.geometry.attributes.uv) L.drapeUV(t.geometry, center.gx, center.gy); const d = L.drapeMesh(t.geometry); if (d) { drapes.push(d); scene.add(d); } }
 }
 function dropExtras() {
