@@ -5,7 +5,7 @@ import * as THREE from './lib/three.module.min.js';
 const GX0 = 67340, GY0 = 5940, TW = 2048, TH = 2197, ST = 20;        // texture origin in grid metres, 20 m per pixel
 const PORT = {gx: 76405.97, gy: 33019.82, w: 4126.2, h: 3619.5};     // harbour photo (GSI) extent in grid metres
 let land = null, ben = null, benV = null;
-let treeImg = null, A = null, drape = null, tex = null, bot = null, sat = null, bld = null, portImg = null, ready = null;
+let brg = null, treeImg = null, A = null, drape = null, tex = null, bot = null, sat = null, bld = null, portImg = null, ready = null;
 const triCache = new Map();
 
 async function img(name) {
@@ -22,6 +22,7 @@ export function init(api) {
     try { const b = await createImageBitmap(await A.getData('data/v3/drape.webp'), {premultiplyAlpha: 'none'}); const c = document.createElement('canvas'); c.width = b.width; c.height = b.height; c.getContext('2d').drawImage(b, 0, 0); drape = c; } catch (e) { drape = null; }
     tex = t.value || null; bot = b.value || null; bld = j.value || null;
     try { ben = await img('benthic.webp'); } catch (e) { ben = null; }
+    try { brg = JSON.parse(await (await A.getData('data/v3/bridges.json')).text()); } catch (e) { brg = null; }
     try { treeImg = await img('trees.webp'); } catch (e) { treeImg = null; }
     try { benV = await loadBenVec(A); } catch (e) { benV = null; }
     try { land = JSON.parse(await (await A.getData('data/v3/land.json')).text()); } catch (e) { land = null; }
@@ -266,4 +267,31 @@ export function trees(cx, cy, R, ve, height) {
   }
   m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true;
   return m;
+}
+
+// ---- bridges: OSM bridge=yes centrelines (235) as grey decks with side beams; deck height runs between the two end heights ----
+export function bridges(cx, cy, R, ve, height) {
+  if (!brg) return null;
+  const pos = [], idx = [], thick = 1.2 * Math.min(ve, 3);
+  for (const [w10, o] of brg) {
+    const n = o.length / 2, p = [];
+    for (let i = 0; i < n; i++) p.push(GX0 + o[2 * i] / 10 - cx, GY0 + o[2 * i + 1] / 10 - cy);
+    if (!p.some((v, i) => i % 2 === 0 && Math.abs(v) < R && Math.abs(p[i + 1]) < R)) continue;
+    const e0 = Math.max(height(p[0], p[1]), 0) * ve, e1 = Math.max(height(p[2 * n - 2], p[2 * n - 1]), 0) * ve, hw = w10 / 20;
+    let len = 0; const cum = [0];
+    for (let i = 1; i < n; i++) { len += Math.hypot(p[2 * i] - p[2 * i - 2], p[2 * i + 1] - p[2 * i - 1]); cum.push(len); }
+    const base = pos.length / 3;
+    for (let i = 0; i < n; i++) {
+      const a = Math.max(i - 1, 0), b = Math.min(i + 1, n - 1);
+      let dx = p[2 * b] - p[2 * a], dz = p[2 * b + 1] - p[2 * a + 1]; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+      const y = Math.max(e0 + (e1 - e0) * (len ? cum[i] / len : 0), 2 * Math.min(ve, 3)) + 1.5, x = p[2 * i], z = p[2 * i + 1];
+      const lx = x - dz * hw, lz = z + dx * hw, rx = x + dz * hw, rz = z - dx * hw;
+      pos.push(lx, y, lz, rx, y, rz, lx, y - thick, lz, rx, y - thick, rz);
+      if (i) { const q = base + 4 * (i - 1), r = q + 4;
+        idx.push(q, q + 1, r, q + 1, r + 1, r, q + 2, r + 2, q + 3, q + 3, r + 2, r + 3, q, r, q + 2, r, r + 2, q + 2, q + 1, q + 3, r + 1, r + 1, q + 3, r + 3); }
+    }
+  }
+  if (!idx.length) return null;
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+  return new THREE.Mesh(g, new THREE.MeshLambertMaterial({color: 0xb9b6ac, side: THREE.DoubleSide}));
 }

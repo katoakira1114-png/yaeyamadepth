@@ -1,7 +1,7 @@
 {
-"build": 1792950009,
+"build": 1792953292,
 "files": {
-"app.js": "7c6287b1ab2c6e99c0a031edfd7784758bd84859",
+"app.js": "567cf9b8cf1fbed74f7b483b361ceeb717ed35ea",
 "apple-touch-icon.png": "3af0f93b82791d4b7222f49bccd115256cfb53ee",
 "data/base.png.enc": "abe13ab307a235e517cd7338952ec1349fc41e02",
 "data/c/0_10.png.enc": "e7b106cb847b90198a5a9501f29c7ecf57aaf0e4",
@@ -251,6 +251,7 @@
 "data/v3/bld.json.enc": "a3b3fe692c94d41cc4a4b1db573773541ef61dc0",
 "data/v3/bottom.webp.enc": "61a0135a560f2ba8e9d57a5833f8a4976e2ef324",
 "data/v3/bottom_sat.webp.enc": "9982eee407f3a12d28458812e3e356e58134af54",
+"data/v3/bridges.json.enc": "38a46717994b023a8082dde4cda86f68e4bed338",
 "data/v3/drape.webp.enc": "37da555c9e03095b5e945e538a5e127f0536742f",
 "data/v3/land.json.enc": "c160233e4a3fa5fc262cf14b37d54f024154060e",
 "data/v3/port.webp.enc": "43b7b5e3e02e745df0b61a82dcad3404111ad95a",
@@ -260,12 +261,12 @@
 "icon-192.png": "7f4cb0c9c3c924387fa2db3f04b3d0611a5925c9",
 "icon-512.png": "0859138fc55fad135e6be478c2ae53dc13b825b8",
 "index.html": "37b9cf26343bac69df998e0a9a73576b792924dd",
-"layers3d.js": "7232b273c0ae344e7fb9edd6e6c3eb5ddf598885",
+"layers3d.js": "9b9b301a67409b5221e0d1986e873a9a38ecebe1",
 "lib/OrbitControls.js": "8d70e388a0dd5a676de948878a816c41e8e20166",
 "lib/three-LICENSE.txt": "e64e644435ab71c7a646b90d47843001ed4eecc3",
 "lib/three.module.min.js": "512c8b83df15a015a5ed8fcf7e580be4b46ce4ee",
 "manifest.webmanifest": "14278500662549c35d2329f69d32a3bb5289ee58",
 "native.js": "adf3300352d5af10c37dcbceb85bd41345b05e5a",
-"view3d.js": "e0eeec515d48a3a75f8775ff87833609d43b3d52"
+"view3d.js": "b78df947f408aae8b689d00909dbf6e58501db15"
 }
 }
