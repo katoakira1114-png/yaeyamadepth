@@ -57,7 +57,7 @@ try {
 def webRoot = file('../../..')
 tasks.register('copyWebAssets', Sync) {
     from(webRoot) {
-        include 'index.html', 'app.js', 'extras.js', 'view3d.js', 'layers3d.js', 'native.js', 'files.json', 'manifest.webmanifest'
+        include 'index.html', 'app.js', 'extras.js', 'view3d.js', 'layers3d.js', 'native.js', 'files.json', 'sw.js', 'manifest.webmanifest'
         include 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'lib/**', 'data/**'
     }
     into 'src/main/assets/public'
