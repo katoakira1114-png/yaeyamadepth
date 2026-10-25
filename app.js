@@ -235,6 +235,7 @@ function draw() {
       }
   }
   cvis.forEach(blit); hvis.forEach(blit);
+  if (typeof drawBottom === 'function') drawBottom();
   // harbour structures (OpenStreetMap)
   if (view.s * META.st >= 0.3) {
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -370,6 +371,7 @@ function onPosError(err) {
 function dataFiles() {
   if (!META) return [];
   return [...(ENC ? ['data/key.json'] : []), ...['data/meta.json', 'data/base.png', 'data/struct.json',
+    ...['tex.jpg', 'bottom.webp', 'bottom_sat.webp', 'port.webp', 'bld.json'].map(f => 'data/v3/' + f),
     ...META.chunks.map(([i, j]) => `data/c/${i}_${j}.png`), ...META.hr.chunks.map(([i, j]) => `data/h/${i}_${j}.png`)].map(dataURL)];
 }
 const fmtMB = b => (b / 1048576).toFixed(1) + ' MB';

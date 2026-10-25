@@ -356,6 +356,24 @@ async function exportGPX(name, pts, wps, phs) {
   const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = file.name; document.body.appendChild(a); a.click(); a.remove();
 }
 
+// ---------- 海底の色を2D地図に重ねる（ボタンで 切 → 衛星そのまま → 補正色(推定) → 切）----------
+let botMode = 0, botImgs = {};
+const BOTF = {1: 'data/v3/bottom_sat.webp', 2: 'data/v3/bottom.webp'};
+$('bBot').onclick = async () => {
+  botMode = (botMode + 1) % 3; $('bBot').classList.toggle('on', botMode > 0);
+  if (botMode && !botImgs[botMode]) {
+    try { botImgs[botMode] = await loadBitmap(await getData(BOTF[botMode])); }
+    catch (e) { toast('海底の色データを読み込めませんでした'); botMode = 0; $('bBot').classList.remove('on'); }
+  }
+  toast(['海底の色: なし', '海底の色: 衛星写真そのまま（浅場。石垣島周辺のみ）', '海底の色: 補正色（水深10m以内、推定。明るい=砂、暗い=岩・サンゴ・海藻）'][botMode]);
+  requestDraw();
+};
+function drawBottom() {
+  const im = botMode && botImgs[botMode]; if (!im) return;
+  const [x, y] = g2s(67340, 5940); ctx.save(); ctx.globalAlpha = botMode === 1 ? 0.9 : 0.72; ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(im, x, y, 2048 * 20 * view.s, 2197 * 20 * view.s); ctx.restore();
+}
+
 // ---------- 3D ----------
 let v3 = null;
 $('b3d').onclick = async () => {
@@ -370,7 +388,7 @@ function sampleSync(gx, gy) {
 }
 const API3 = {
   get META() { return META; }, get follow() { return follow; }, get here() { return here; }, get view() { return view; }, get CSET() { return CSET; }, get HSET() { return HSET; },
-  load, sampleSync, ll2g, g2ll, depthAt, describe, ramp, LUT, LAND, STRUCTURE, fmtDM,
+  getData, load, sampleSync, ll2g, g2ll, depthAt, describe, ramp, LUT, LAND, STRUCTURE, fmtDM,
   track: () => showTrack ? curShown() : [], wpts: () => wpts, photos: () => photos, openPhoto, toast,
   pause2d: on => { paused2d = on; if (!on) requestDraw(); },
 };

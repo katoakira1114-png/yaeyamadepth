@@ -6,6 +6,7 @@ import {OrbitControls} from './lib/OrbitControls.js';
 
 const R_IN = 1500, ST_IN = 10, R_OUT = 6000, ST_OUT = 40;
 let A = null, root, renderer, scene, cam, ctl, ray = new THREE.Raycaster();
+let L = null, opt = {land: true, bot: 0, bld: true, port: true}, bldMesh = null, portMesh = null;
 let center = null, ve = 5, terrain = [], water, me, meLine, trackLine = null, marks = null, building = false, follow = true, needs = false;
 const $ = id => document.getElementById(id);
 
@@ -21,7 +22,7 @@ export function open(api) {
   rebuild();
 }
 function close() {
-  root.hidden = true; clearTerrain(); A.pause2d(false);
+  root.hidden = true; clearTerrain(); dropExtras(); A.pause2d(false);
 }
 
 function setup() {
@@ -44,6 +45,10 @@ function setup() {
   <button id="v3back">◀ 地図に戻る</button>
   <button id="v3here">現在地を中心に</button>
   <label><input type="checkbox" id="v3water" checked> 海面</label>
+  <label><input type="checkbox" id="v3land" checked> 陸の衛星色</label>
+  <label>海底の色 <select id="v3bot"><option value="0">なし</option><option value="2">衛星そのまま(浅場)</option><option value="1">補正色(10m以内・推定)</option></select></label>
+  <label><input type="checkbox" id="v3bld" checked> 建物</label>
+  <label><input type="checkbox" id="v3port" checked> 港の写真</label>
   <span>高さ×<b id="v3vev">5</b></span><input type="range" id="v3ve" min="1" max="10" step="0.5" value="5">
 </div>
 <div id="v3busy" class="card">地形を読み込み中…</div>`;
@@ -80,6 +85,8 @@ function setup() {
   $('v3back').onclick = close;
   $('v3here').onclick = () => { const h = A.here; if (!h) { A.toast('現在地がまだわかりません'); return; } follow = true; moveCenter(h.gx, h.gy); };
   $('v3water').onchange = e => { water.visible = e.target.checked; req(); };
+  $('v3bot').onchange = e => { opt.bot = +e.target.value; applyOpt(); };
+  for (const [id, k] of [['v3land', 'land'], ['v3bld', 'bld'], ['v3port', 'port']]) $(id).onchange = e => { opt[k] = e.target.checked; applyOpt(); };
   $('v3ve').oninput = e => { ve = +e.target.value; $('v3vev').textContent = ve; applyVE(); };
   addEventListener('resize', onResize);
   addEventListener('fix', onFix);
@@ -131,8 +138,10 @@ function grid(R, step, hole) {
     let y, r, g, b;
     if (!s) { y = -250; r = g = b = 30; }
     else if (s.d === A.STRUCTURE) { y = 3; r = g = b = 160; }
-    else if (s.d === A.LAND) { y = s.elev; const t = Math.min(s.elev / 200, 1); r = 228 - 40 * t; g = 216 - 46 * t; b = 180 - 50 * t; }
-    else { y = -s.d; const q = Math.min(Math.round(s.d * 10), 640) * 3; r = LUT[q]; g = LUT[q + 1]; b = LUT[q + 2]; }
+    else if (s.d === A.LAND) { y = s.elev; const t = Math.min(s.elev / 200, 1); r = 228 - 40 * t; g = 216 - 46 * t; b = 180 - 50 * t;
+      if (L && opt.land) { const c = L.landColor(center.gx + x, center.gy + z); if (c) { r = c[0]; g = c[1]; b = c[2]; } } }
+    else { y = -s.d; const q = Math.min(Math.round(s.d * 10), 640) * 3; r = LUT[q]; g = LUT[q + 1]; b = LUT[q + 2];
+      if (L && opt.bot && s.d < 10) { const c = L.bottomColor(center.gx + x, center.gy + z, opt.bot); if (c) { const a = c[3] * (opt.bot === 2 ? 0.95 : 0.85); r += (c[0] - r) * a; g += (c[1] - g) * a; b += (c[2] - b) * a; } } }
     raw[k] = y; pos[k * 3] = x; pos[k * 3 + 1] = y * ve; pos[k * 3 + 2] = z;
     col[k * 3] = r / 255; col[k * 3 + 1] = g / 255; col[k * 3 + 2] = b / 255;
   }
@@ -153,17 +162,46 @@ async function rebuild() {
   building = true; $('v3busy').hidden = false;
   const t0 = performance.now();
   try {
+    if (!L) { try { L = await import('./layers3d.js'); await L.init(A); } catch (e) { L = null; } }
     await ensureTiles();
     clearTerrain();
     terrain.push(grid(R_IN, ST_IN, 0), grid(R_OUT, ST_OUT, R_IN - ST_OUT));
     terrain.forEach(m => scene.add(m));
-    buildTrack(); buildMarks(); updateMe();
+    buildExtras(); buildTrack(); buildMarks(); updateMe();
     window.__v3ms = performance.now() - t0;
   } finally {
     building = false; $('v3busy').hidden = true; req();
     if (pending) { pending = false; rebuild(); }
   }
 }
+function dropExtras() {
+  for (const m of [bldMesh, portMesh]) if (m) { scene.remove(m); m.geometry.dispose(); if (m.material.map) m.material.map.dispose(); m.material.dispose(); }
+  bldMesh = portMesh = null;
+}
+function buildExtras() {
+  dropExtras(); if (!L) return;
+  if (opt.bld) { bldMesh = L.buildings(center.gx, center.gy, 3500, ve); if (bldMesh) scene.add(bldMesh); }
+  if (opt.port) { portMesh = L.portPatch(center.gx, center.gy, R_OUT, ve, (x, z) => { const s = A.sampleSync(center.gx + x, center.gy + z); return !s ? 0 : s.d === A.LAND ? s.elev : s.d === A.STRUCTURE ? 3 : 0; }); if (portMesh) scene.add(portMesh); }
+}
+function recolor() {
+  // vertex colours depend on the options; recompute them without rebuilding the geometry
+  const LUT = A.LUT;
+  for (const m of terrain) {
+    const pos = m.geometry.attributes.position, col = m.geometry.attributes.color;
+    for (let k = 0; k < pos.count; k++) {
+      const x = pos.getX(k), z = pos.getZ(k), s = A.sampleSync(center.gx + x, center.gy + z);
+      if (!s || s.d === A.STRUCTURE) continue;
+      let r, g, b;
+      if (s.d === A.LAND) { const t = Math.min(s.elev / 200, 1); r = 228 - 40 * t; g = 216 - 46 * t; b = 180 - 50 * t;
+        if (L && opt.land) { const c = L.landColor(center.gx + x, center.gy + z); if (c) { r = c[0]; g = c[1]; b = c[2]; } } }
+      else { const q = Math.min(Math.round(s.d * 10), 640) * 3; r = LUT[q]; g = LUT[q + 1]; b = LUT[q + 2];
+        if (L && opt.bot && s.d < 10) { const c = L.bottomColor(center.gx + x, center.gy + z, opt.bot); if (c) { const a = c[3] * (opt.bot === 2 ? 0.95 : 0.85); r += (c[0] - r) * a; g += (c[1] - g) * a; b += (c[2] - b) * a; } } }
+      col.setXYZ(k, r / 255, g / 255, b / 255);
+    }
+    col.needsUpdate = true;
+  }
+}
+function applyOpt() { recolor(); buildExtras(); req(); }
 function moveCenter(gx, gy) {
   // keep the camera's angle and distance, aim at the new centre
   const off = cam.position.clone().sub(ctl.target);
@@ -171,6 +209,7 @@ function moveCenter(gx, gy) {
   rebuild();
 }
 function applyVE() {
+  buildExtras();
   for (const m of terrain) { const p = m.geometry.attributes.position.array, raw = m.userData.raw; for (let i = 0; i < raw.length; i++) p[i * 3 + 1] = raw[i] * ve; m.geometry.attributes.position.needsUpdate = true; m.geometry.computeVertexNormals(); }
   buildMarks(); updateMe(); req();
 }
