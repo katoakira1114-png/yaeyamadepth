@@ -416,7 +416,7 @@ async function otaUpdate() {
   let cur = cur0;
   if (cur && pk && cur.build < pk.build) { await caches.delete('ota'); cur = null; } // a newer APK was installed: its files win
   const base = cur || pk || {files: {}};
-  const r = await fetch(OTA_BASE + 'files.json', {cache: 'no-store'}); if (!r.ok) throw new Error('files.json ' + r.status);
+  const r = await fetch(OTA_BASE + 'files.json?t=' + Date.now(), {cache: 'no-store'}); if (!r.ok) throw new Error('files.json ' + r.status);
   const remote = await r.json();
   const todo = Object.keys(remote.files).filter(p => base.files[p] !== remote.files[p]);
   if (!todo.length) return 0;
@@ -425,7 +425,7 @@ async function otaUpdate() {
   const worker = async () => {
     while (i < todo.length) {
       const p = todo[i++];
-      const rr = await fetch(OTA_BASE + p, {cache: 'no-store'}); if (!rr.ok) throw new Error(p + ' ' + rr.status);
+      const rr = await fetch(OTA_BASE + p + '?h=' + remote.files[p], {cache: 'no-store'}); if (!rr.ok) throw new Error(p + ' ' + rr.status);
       await st.put(location.origin + '/' + p, rr); done++;
       $('bUpd').textContent = '更新中… ' + done + '/' + todo.length;
     }
