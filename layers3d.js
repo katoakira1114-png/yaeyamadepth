@@ -5,7 +5,7 @@ import * as THREE from './lib/three.module.min.js';
 const GX0 = 67340, GY0 = 5940, TW = 2048, TH = 2197, ST = 20;        // texture origin in grid metres, 20 m per pixel
 const PORT = {gx: 76405.97, gy: 33019.82, w: 4126.2, h: 3619.5};     // harbour photo (GSI) extent in grid metres
 let land = null, ben = null, benV = null;
-let brg = null, treeImg = null, A = null, drape = null, tex = null, bot = null, sat = null, bld = null, portImg = null, ready = null;
+let est = null, brg = null, treeImg = null, A = null, drape = null, tex = null, bot = null, sat = null, bld = null, portImg = null, ready = null;
 const triCache = new Map();
 
 async function img(name) {
@@ -22,6 +22,7 @@ export function init(api) {
     try { const b = await createImageBitmap(await A.getData('data/v3/drape.webp'), {premultiplyAlpha: 'none'}); const c = document.createElement('canvas'); c.width = b.width; c.height = b.height; c.getContext('2d').drawImage(b, 0, 0); drape = c; } catch (e) { drape = null; }
     tex = t.value || null; bot = b.value || null; bld = j.value || null;
     try { ben = await img('benthic.webp'); } catch (e) { ben = null; }
+    try { est = JSON.parse(await (await A.getData('data/v3/estuary.json')).text()); } catch (e) { est = null; }
     try { brg = JSON.parse(await (await A.getData('data/v3/bridges.json')).text()); } catch (e) { brg = null; }
     try { treeImg = await img('trees.webp'); } catch (e) { treeImg = null; }
     try { benV = await loadBenVec(A); } catch (e) { benV = null; }
@@ -294,4 +295,21 @@ export function bridges(cx, cy, R, ve, height) {
   if (!idx.length) return null;
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
   return new THREE.Mesh(g, new THREE.MeshLambertMaterial({color: 0xb9b6ac, side: THREE.DoubleSide}));
+}
+
+// ---- turbid estuary water (Sentinel-2 MNDWI) that the land mask treats as land: flat fill just above the ground ----
+export function estuary(cx, cy, R, ve, height) {
+  if (!est) return null;
+  const pos = [], idx = [];
+  for (const o of est) {
+    const v = [], hs = []; let ok = false;
+    for (let i = 0; i < o.length; i += 2) { const x = GX0 + o[i] / 10 - cx, z = GY0 + o[i + 1] / 10 - cy; v.push(new THREE.Vector2(x, z)); hs.push(Math.min(Math.max(height(x, z), 0), 1.5)); if (Math.abs(x) < R && Math.abs(z) < R) ok = true; }
+    if (!ok || v.length < 3) continue;
+    const base = pos.length / 3, tri = THREE.ShapeUtils.triangulateShape(v, []);
+    v.forEach((q, i) => pos.push(q.x, hs[i] * ve + 0.8, q.y));
+    for (const t of tri) idx.push(base + t[0], base + t[1], base + t[2]);
+  }
+  if (!idx.length) return null;
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx);
+  return new THREE.Mesh(g, new THREE.MeshBasicMaterial({color: 0x4d96a6, side: THREE.DoubleSide, transparent: true, opacity: 0.85}));
 }
