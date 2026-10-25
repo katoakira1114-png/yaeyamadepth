@@ -1,5 +1,5 @@
 {
-"build": 1792968797,
+"build": 1792970770,
 "files": {
 "app.js": "99945fe63b30637995453dc620c43a5af82d1de9",
 "apple-touch-icon.png": "3af0f93b82791d4b7222f49bccd115256cfb53ee",
@@ -248,7 +248,7 @@
 "data/struct.json.enc": "0722876de353f52bfe42b6943ce447fc27cc5387",
 "data/v3/benthic.webp.enc": "40e08650db6c0d95e0f607882ec67b9a49378fb2",
 "data/v3/benthic_vec.json.gz.enc": "04b643c1b91da071f6ce91a44f81ea39e9708fe5",
-"data/v3/bld.json.enc": "a3b3fe692c94d41cc4a4b1db573773541ef61dc0",
+"data/v3/bld.json.enc": "f7fb3edf275a03734a17e4ed8b828118557f5aba",
 "data/v3/bottom.webp.enc": "61a0135a560f2ba8e9d57a5833f8a4976e2ef324",
 "data/v3/bottom_sat.webp.enc": "9982eee407f3a12d28458812e3e356e58134af54",
 "data/v3/bridges.json.enc": "38a46717994b023a8082dde4cda86f68e4bed338",
