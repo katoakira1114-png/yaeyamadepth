@@ -462,7 +462,7 @@ addEventListener('resize', resize);
 
 // ---------- start ----------
 (async function init() {
-  if (!NATIVE && 'serviceWorker' in navigator) {
+  if ('serviceWorker' in navigator) {
     // when an updated worker takes over, reload once so the page runs the new code
     const hadSW = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadSW && !sessionStorage.getItem('swReload')) { sessionStorage.setItem('swReload', '1'); location.reload(); } });
