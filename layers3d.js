@@ -52,9 +52,22 @@ export function bottomColor(gx, gy, mode) {
   const I = mode === 2 ? sat : bot; return I && bil(I, gx, gy, tmp) && tmp[3] > 2 ? [tmp[0], tmp[1], tmp[2], tmp[3] / 255] : null; }
 
 // ---- buildings ----
+let facadeTex = null, roofPhotoTex = null;
+function facade() {
+  if (facadeTex) return facadeTex;
+  const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+  g.fillStyle = '#f2f0ea'; g.fillRect(0, 0, 128, 128);
+  g.fillStyle = '#5a6b7c'; g.fillRect(22, 30, 84, 62);            // window
+  g.fillStyle = '#9fb4c6'; g.fillRect(22, 30, 84, 20);            // sky reflection
+  g.fillStyle = '#c9c5bb'; g.fillRect(0, 118, 128, 10);           // floor slab
+  g.fillStyle = '#8a8a86'; g.fillRect(18, 92, 92, 5);             // sill
+  facadeTex = new THREE.CanvasTexture(c); facadeTex.colorSpace = THREE.SRGBColorSpace; facadeTex.anisotropy = 4; facadeTex.wrapS = facadeTex.wrapT = THREE.RepeatWrapping;
+  return facadeTex;
+}
+// Buildings: walls get a floors-and-windows texture (floor height 3.2 m from the stored height), roofs inside the harbour photo use that photo.
 export function buildings(cx, cy, R, ve) {
   if (!bld) return null;
-  const bs = Math.max(1, ve * 0.6), pos = [], col = [], C = new THREE.Color();
+  const bs = Math.max(1, ve * 0.6), W = {p: [], c: [], u: []}, RP = {p: [], c: [], u: []}, RF = {p: [], c: [], u: []};
   for (let n = 0; n < bld.length; n++) {
     const b = bld[n], gx = GX0 + b[0] / 10, gy = GY0 + b[1] / 10;
     if (Math.abs(gx - cx) > R || Math.abs(gy - cy) > R) continue;
@@ -64,21 +77,34 @@ export function buildings(cx, cy, R, ve) {
       for (let i = 0; i < d.length; i += 2) v.push(new THREE.Vector2((b[0] + d[i]) / 10, (b[1] + d[i + 1]) / 10));
       T = {v, tri: THREE.ShapeUtils.triangulateShape(v, [])}; triCache.set(n, T);
     }
-    const base = b[4] / 10 * ve, y0 = base - 1, y1 = base + b[3] / 10 * bs, rgb = b[5];
-    const r = (rgb >> 16 & 255) / 255, g = (rgb >> 8 & 255) / 255, bl = (rgb & 255) / 255, k = 0.78;
+    const base = b[4] / 10 * ve, y0 = base - 1, y1 = base + b[3] / 10 * bs, rgb = b[5], floors = Math.max(1, b[3] / 10 / 3.2);
+    const r = (rgb >> 16 & 255) / 255, g = (rgb >> 8 & 255) / 255, bl = (rgb & 255) / 255, k = 0.85;
     const ox = GX0 - cx, oy = GY0 - cy, v = T.v;
     for (let i = 0; i < v.length; i++) {
       const a = v[i], c = v[(i + 1) % v.length];
-      const ax = a.x + ox, az = a.y + oy, cx2 = c.x + ox, cz = c.y + oy;
-      pos.push(ax, y0, az, cx2, y0, cz, cx2, y1, cz, ax, y0, az, cx2, y1, cz, ax, y1, az);
-      for (let q = 0; q < 6; q++) col.push(r * k, g * k, bl * k);
+      const ax = a.x + ox, az = a.y + oy, cx2 = c.x + ox, cz = c.y + oy, u1 = Math.hypot(c.x - a.x, c.y - a.y) / 3.2;
+      W.p.push(ax, y0, az, cx2, y0, cz, cx2, y1, cz, ax, y0, az, cx2, y1, cz, ax, y1, az);
+      W.u.push(0, 0, u1, 0, u1, floors, 0, 0, u1, floors, 0, floors);
+      for (let q = 0; q < 6; q++) W.c.push(0.55 + r * k * 0.45, 0.55 + g * k * 0.45, 0.55 + bl * k * 0.45);
     }
-    for (const t of T.tri) for (const q of t) { pos.push(v[q].x + ox, y1, v[q].y + oy); col.push(r, g, bl); }
+    const inPort = portImg && gx > PORT.gx && gx < PORT.gx + PORT.w && gy > PORT.gy && gy < PORT.gy + PORT.h;
+    const D = inPort ? RF : RP;
+    for (const t of T.tri) for (const q of t) {
+      D.p.push(v[q].x + ox, y1, v[q].y + oy);
+      if (inPort) { D.c.push(1, 1, 1); D.u.push((v[q].x + GX0 - PORT.gx) / PORT.w, 1 - (v[q].y + GY0 - PORT.gy) / PORT.h); }
+      else D.c.push(r, g, bl);
+    }
   }
-  if (!pos.length) return null;
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); geo.computeVertexNormals();
-  return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({vertexColors: true, side: THREE.DoubleSide}));
+  const P = [...W.p, ...RP.p, ...RF.p];
+  if (!P.length) return null;
+  const nW = W.p.length / 3, nR = RP.p.length / 3, nF = RF.p.length / 3;
+  const geo = new THREE.BufferGeometry(), uv = [...W.u, ...new Array(nR * 2).fill(0), ...RF.u];
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute([...W.c, ...RP.c, ...RF.c], 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); geo.computeVertexNormals();
+  geo.addGroup(0, nW, 0); geo.addGroup(nW, nR, 1); geo.addGroup(nW + nR, nF, 2);
+  if (portImg && !roofPhotoTex) { roofPhotoTex = new THREE.Texture(portImg); roofPhotoTex.colorSpace = THREE.SRGBColorSpace; roofPhotoTex.needsUpdate = true; roofPhotoTex.anisotropy = 4; }
+  const mats = [new THREE.MeshLambertMaterial({map: facade(), vertexColors: true, side: THREE.DoubleSide}), new THREE.MeshLambertMaterial({vertexColors: true, side: THREE.DoubleSide}), new THREE.MeshLambertMaterial({map: roofPhotoTex || null, vertexColors: true, side: THREE.DoubleSide})];
+  return new THREE.Mesh(geo, mats);
 }
 
 // ---- harbour photo patch (land part only; the sea is transparent) ----

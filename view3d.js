@@ -185,7 +185,7 @@ function addDrapes() {
   for (const t of terrain) { if (!t.geometry.attributes.uv) L.drapeUV(t.geometry, center.gx, center.gy); const d = L.drapeMesh(t.geometry); if (d) { drapes.push(d); scene.add(d); } }
 }
 function dropExtras() {
-  for (const m of [bldMesh, portMesh, lineMesh, riverM]) if (m) { scene.remove(m); m.geometry.dispose(); if (m.material.map) m.material.map.dispose(); m.material.dispose(); }
+  for (const m of [bldMesh, portMesh, lineMesh, riverM]) if (m) { scene.remove(m); m.geometry.dispose(); for (const mt of [].concat(m.material)) { if (mt !== undefined && mt.map && m !== bldMesh) mt.map.dispose(); mt.dispose(); } }
   bldMesh = portMesh = lineMesh = riverM = null;
 }
 function buildExtras() {
