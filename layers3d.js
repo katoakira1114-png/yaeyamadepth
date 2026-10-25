@@ -5,7 +5,7 @@ import * as THREE from './lib/three.module.min.js';
 const GX0 = 67340, GY0 = 5940, TW = 2048, TH = 2197, ST = 20;        // texture origin in grid metres, 20 m per pixel
 const PORT = {gx: 76405.97, gy: 33019.82, w: 4126.2, h: 3619.5};     // harbour photo (GSI) extent in grid metres
 let land = null, ben = null, benV = null;
-let A = null, drape = null, tex = null, bot = null, sat = null, bld = null, portImg = null, ready = null;
+let treeImg = null, A = null, drape = null, tex = null, bot = null, sat = null, bld = null, portImg = null, ready = null;
 const triCache = new Map();
 
 async function img(name) {
@@ -22,13 +22,14 @@ export function init(api) {
     try { const b = await createImageBitmap(await A.getData('data/v3/drape.webp'), {premultiplyAlpha: 'none'}); const c = document.createElement('canvas'); c.width = b.width; c.height = b.height; c.getContext('2d').drawImage(b, 0, 0); drape = c; } catch (e) { drape = null; }
     tex = t.value || null; bot = b.value || null; bld = j.value || null;
     try { ben = await img('benthic.webp'); } catch (e) { ben = null; }
+    try { treeImg = await img('trees.webp'); } catch (e) { treeImg = null; }
     try { benV = await loadBenVec(A); } catch (e) { benV = null; }
     try { land = JSON.parse(await (await A.getData('data/v3/land.json')).text()); } catch (e) { land = null; }
     try { portImg = await createImageBitmap(await A.getData('data/v3/port.webp'), {imageOrientation: 'flipY', premultiplyAlpha: 'none'}); } catch (e) { portImg = null; }
   })();
   return ready;
 }
-export const has = () => ({land: !!tex, bottom: !!bot, bld: !!bld, port: !!portImg, rivers: !!land});
+export const has = () => ({land: !!tex, bottom: !!bot, bld: !!bld, port: !!portImg, rivers: !!land, trees: !!treeImg});
 
 function bil(I, gx, gy, out) {
   const fx = (gx - GX0) / ST - 0.5, fy = (gy - GY0) / ST - 0.5;
@@ -237,4 +238,32 @@ export function riverMesh(cx, cy, R, ve, height) {
   if (!idx.length) return null;
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx);
   return new THREE.Mesh(g, new THREE.MeshBasicMaterial({color: 0x2f7fe8, side: THREE.DoubleSide, transparent: true, opacity: 0.88}));
+}
+
+// ---- trees: one cone per 10 m canopy cell (ESA WorldCover tree class x ETH/Meta canopy height); coarser far away ----
+export function trees(cx, cy, R, ve, height) {
+  if (!treeImg) return null;
+  const bs = Math.max(1, ve * 0.6), W = treeImg.w, H = treeImg.h, d = treeImg.d, P = [];
+  const i0 = Math.max(0, Math.floor((cx - R - GX0) / 10)), i1 = Math.min(W - 1, Math.ceil((cx + R - GX0) / 10));
+  const j0 = Math.max(0, Math.floor((cy - R - GY0) / 10)), j1 = Math.min(H - 1, Math.ceil((cy + R - GY0) / 10));
+  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+    const v = d[(j * W + i) * 4]; if (!v) continue;
+    const x = GX0 + (i + 0.5) * 10 - cx, z = GY0 + (j + 0.5) * 10 - cy, dist = Math.hypot(x, z);
+    if (dist > R) continue;
+    const s = dist < 800 ? 1 : dist < 1600 ? 2 : 4;
+    if (i % s || j % s) continue;
+    const hs = ((i * 73856093) ^ (j * 19349663)) >>> 0;
+    P.push(x + ((hs & 255) / 255 - 0.5) * 6 * s, z + ((hs >> 8 & 255) / 255 - 0.5) * 6 * s, v / 4 * 0.7, s, hs);
+  }
+  const n = P.length / 5; if (!n) return null;
+  const g = new THREE.ConeGeometry(1, 1, 5); g.translate(0, 0.5, 0);
+  const m = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({color: 0xffffff}), n), M = new THREE.Matrix4(), q = new THREE.Quaternion(), c = new THREE.Color();
+  for (let k = 0; k < n; k++) {
+    const x = P[k * 5], z = P[k * 5 + 1], h = P[k * 5 + 2], s = P[k * 5 + 3], hs = P[k * 5 + 4];
+    const gy = Math.max(height(x, z), 0) * ve, r = Math.min(5, Math.max(1.8, h * 0.28)) * Math.sqrt(s * bs);
+    M.compose(new THREE.Vector3(x, gy, z), q, new THREE.Vector3(r, h * bs, r)); m.setMatrixAt(k, M);
+    c.setHSL(0.27 + ((hs >> 16 & 255) / 255 - 0.5) * 0.06, 0.45, 0.2 + ((hs >> 4 & 255) / 255) * 0.08 + Math.min(h, 20) / 20 * 0.04); m.setColorAt(k, c);
+  }
+  m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true;
+  return m;
 }
