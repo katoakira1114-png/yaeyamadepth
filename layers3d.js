@@ -4,7 +4,7 @@ import * as THREE from './lib/three.module.min.js';
 
 const GX0 = 67340, GY0 = 5940, TW = 2048, TH = 2197, ST = 20;        // texture origin in grid metres, 20 m per pixel
 const PORT = {gx: 76405.97, gy: 33019.82, w: 4126.2, h: 3619.5};     // harbour photo (GSI) extent in grid metres
-let A = null, tex = null, bot = null, sat = null, bld = null, portImg = null, ready = null;
+let A = null, drape = null, tex = null, bot = null, sat = null, bld = null, portImg = null, ready = null;
 const triCache = new Map();
 
 async function img(name) {
@@ -18,6 +18,7 @@ export function init(api) {
   if (!ready) ready = (async () => {
     const [t, b, j, st] = await Promise.allSettled([img('tex.jpg'), img('bottom.webp'), A.getData('data/v3/bld.json').then(b => b.text()).then(JSON.parse), img('bottom_sat.webp')]);
     sat = st.value || null;
+    try { const b = await createImageBitmap(await A.getData('data/v3/drape.webp'), {premultiplyAlpha: 'none'}); const c = document.createElement('canvas'); c.width = b.width; c.height = b.height; c.getContext('2d').drawImage(b, 0, 0); drape = c; } catch (e) { drape = null; }
     tex = t.value || null; bot = b.value || null; bld = j.value || null;
     try { portImg = await createImageBitmap(await A.getData('data/v3/port.webp'), {imageOrientation: 'flipY', premultiplyAlpha: 'none'}); } catch (e) { portImg = null; }
   })();
@@ -81,4 +82,19 @@ export function portPatch(cx, cy, R, ve, height) {
   const t = new THREE.Texture(portImg); t.colorSpace = THREE.SRGBColorSpace; t.needsUpdate = true; t.anisotropy = 4;
   const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({map: t, alphaTest: 0.5, side: THREE.DoubleSide}));
   return m;
+}
+
+// ---- 実写テクスチャ（陸＋水深8m以浅の衛星写真）を地形メッシュにそのまま貼る ----
+export const hasDrape = () => !!drape;
+export function drapeUV(geo, cx, cy) {
+  const p = geo.attributes.position, uv = new Float32Array(p.count * 2);
+  for (let k = 0; k < p.count; k++) { uv[k * 2] = (cx + p.getX(k) - GX0) / (TW * ST); uv[k * 2 + 1] = 1 - (cy + p.getZ(k) - GY0) / (TH * ST); }
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+}
+let drapeTex = null;
+export function drapeMesh(geo) {
+  if (!drape) return null;
+  if (!drapeTex) { drapeTex = new THREE.CanvasTexture(drape); drapeTex.colorSpace = THREE.SRGBColorSpace; drapeTex.anisotropy = 4; drapeTex.wrapS = drapeTex.wrapT = THREE.ClampToEdgeWrapping; }
+  const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({map: drapeTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2}));
+  m.renderOrder = 1; return m;
 }
