@@ -438,6 +438,15 @@ async function otaUpdate() {
   return todo.length;
 }
 $('verNote').textContent = NATIVE ? 'ボタンを押すと、インターネット上（GitHub）の最新の内容に入れ替えます。画面や3D・データが対象で、新しい APK を入れ直す必要はありません。' : 'ブラウザ版は、オンラインのときに上のボタンで最新版に入れ替えます。';
+// which version is running (so a stale install can be told from a missing feature)
+(async () => {
+  const fmt = b => b ? new Date(b * 1000).toLocaleString('ja-JP', {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'}) : 'なし';
+  try {
+    const j = async u => { try { const r = await fetch(u); return r.ok ? (await r.json()).build : 0; } catch (e) { return 0; } };
+    const run = await j('files.json'), pk = NATIVE ? await j('files.json?b=1') : 0;
+    $('verNote').textContent += ' 現在の版: ' + fmt(run) + (NATIVE ? '（同梱 ' + fmt(pk) + '）' : '');
+  } catch (e) {}
+})();
 $('bUpd').onclick = async () => {
   if (!navigator.onLine) { toast('オフラインです。電波のあるところで押してください'); return; }
   $('bUpd').textContent = '更新中…'; $('bUpd').disabled = true;
