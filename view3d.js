@@ -46,7 +46,7 @@ function setup() {
   <button id="v3here">現在地を中心に</button>
   <label><input type="checkbox" id="v3water" checked> 海面</label>
   <label><input type="checkbox" id="v3dr" checked> 衛星写真を貼る(陸＋浅場)</label>
-  <label>海底の色 <select id="v3bot"><option value="0">なし</option><option value="2">衛星そのまま(浅場)</option><option value="1">補正色(10m以内・推定)</option></select></label>
+  <label>海底の色 <select id="v3bot"><option value="0">なし</option><option value="2">衛星そのまま(浅場)</option><option value="1">補正色(10m以内・推定)</option><option value="3">底質(Allen Coral Atlas)</option></select></label>
   <label><input type="checkbox" id="v3bld" checked> 建物</label>
   <label><input type="checkbox" id="v3port" checked> 港の写真</label>
   <label><input type="checkbox" id="v3ln" checked> 川・池・道路</label>
@@ -143,7 +143,7 @@ function grid(R, step, hole) {
     else if (s.d === A.LAND) { y = s.elev; const t = Math.min(s.elev / 200, 1); r = 228 - 40 * t; g = 216 - 46 * t; b = 180 - 50 * t;
       if (L && opt.land) { const c = L.landColor(center.gx + x, center.gy + z); if (c) { r = c[0]; g = c[1]; b = c[2]; } } }
     else { y = -s.d; const q = Math.min(Math.round(s.d * 10), 640) * 3; r = LUT[q]; g = LUT[q + 1]; b = LUT[q + 2];
-      if (L && opt.bot && s.d < 10) { const c = L.bottomColor(center.gx + x, center.gy + z, opt.bot); if (c) { const a = c[3] * (opt.bot === 2 ? 0.95 : 0.85); r += (c[0] - r) * a; g += (c[1] - g) * a; b += (c[2] - b) * a; } } }
+      if (L && opt.bot && s.d < 10) { const c = L.bottomColor(center.gx + x, center.gy + z, opt.bot); if (c) { const a = c[3] * (opt.bot === 2 || opt.bot === 3 ? 0.95 : 0.85); r += (c[0] - r) * a; g += (c[1] - g) * a; b += (c[2] - b) * a; } } }
     raw[k] = y; pos[k * 3] = x; pos[k * 3 + 1] = y * ve; pos[k * 3 + 2] = z;
     col[k * 3] = r / 255; col[k * 3 + 1] = g / 255; col[k * 3 + 2] = b / 255;
   }
@@ -204,7 +204,7 @@ function recolor() {
       if (s.d === A.LAND) { const t = Math.min(s.elev / 200, 1); r = 228 - 40 * t; g = 216 - 46 * t; b = 180 - 50 * t;
         if (L && opt.land) { const c = L.landColor(center.gx + x, center.gy + z); if (c) { r = c[0]; g = c[1]; b = c[2]; } } }
       else { const q = Math.min(Math.round(s.d * 10), 640) * 3; r = LUT[q]; g = LUT[q + 1]; b = LUT[q + 2];
-        if (L && opt.bot && s.d < 10) { const c = L.bottomColor(center.gx + x, center.gy + z, opt.bot); if (c) { const a = c[3] * (opt.bot === 2 ? 0.95 : 0.85); r += (c[0] - r) * a; g += (c[1] - g) * a; b += (c[2] - b) * a; } } }
+        if (L && opt.bot && s.d < 10) { const c = L.bottomColor(center.gx + x, center.gy + z, opt.bot); if (c) { const a = c[3] * (opt.bot === 2 || opt.bot === 3 ? 0.95 : 0.85); r += (c[0] - r) * a; g += (c[1] - g) * a; b += (c[2] - b) * a; } } }
       col.setXYZ(k, r / 255, g / 255, b / 255);
     }
     col.needsUpdate = true;

@@ -358,19 +358,19 @@ async function exportGPX(name, pts, wps, phs) {
 
 // ---------- 海底の色を2D地図に重ねる（ボタンで 切 → 衛星そのまま → 補正色(推定) → 切）----------
 let botMode = 0, botImgs = {};
-const BOTF = {1: 'data/v3/bottom_sat.webp', 2: 'data/v3/bottom.webp'};
+const BOTF = {1: 'data/v3/bottom_sat.webp', 2: 'data/v3/bottom.webp', 3: 'data/v3/benthic.webp'};
 $('bBot').onclick = async () => {
-  botMode = (botMode + 1) % 3; $('bBot').classList.toggle('on', botMode > 0);
+  botMode = (botMode + 1) % 4; $('bBot').classList.toggle('on', botMode > 0);
   if (botMode && !botImgs[botMode]) {
     try { botImgs[botMode] = await loadBitmap(await getData(BOTF[botMode])); }
     catch (e) { toast('海底の色データを読み込めませんでした'); botMode = 0; $('bBot').classList.remove('on'); }
   }
-  toast(['海底の色: なし', '海底の色: 衛星写真そのまま（浅場。石垣島周辺のみ）', '海底の色: 補正色（水深10m以内、推定。明るい=砂、暗い=岩・サンゴ・海藻）'][botMode]);
+  toast(['海底の色: なし', '海底の色: 衛星写真そのまま（浅場。石垣島周辺のみ）', '海底の色: 補正色（水深10m以内、推定。明るい=砂、暗い=岩・サンゴ・海藻）', '底質（Allen Coral Atlas。赤=サンゴ/藻、茶=岩、黄=砂、橙茶=礫、緑=海草。非商用データ）'][botMode]);
   requestDraw();
 };
 function drawBottom() {
   const im = botMode && botImgs[botMode]; if (!im) return;
-  const [x, y] = g2s(67340, 5940); ctx.save(); ctx.globalAlpha = botMode === 1 ? 0.9 : 0.72; ctx.imageSmoothingEnabled = true;
+  const [x, y] = g2s(67340, 5940); ctx.save(); ctx.globalAlpha = botMode === 1 ? 0.9 : botMode === 3 ? 0.8 : 0.72; ctx.imageSmoothingEnabled = true;
   ctx.drawImage(im, x, y, 2048 * 20 * view.s, 2197 * 20 * view.s); ctx.restore();
 }
 
