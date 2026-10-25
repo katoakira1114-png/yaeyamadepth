@@ -214,14 +214,14 @@ export function landLines(cx, cy, R, ve, height) {
 export function riverMesh(cx, cy, R, ve, height) {
   if (!land) return null;
   const pos = [], idx = [];
-  for (const [w, o] of land.rivers) {
+  for (const [w, o, ws] of land.rivers) {
     const p = dec(o), n = p.length / 2; if (n < 2) continue;
     if (Math.abs(p[0] - cx) > R * 1.5 && Math.abs(p[2 * n - 2] - cx) > R * 1.5) continue;
     const base = pos.length / 3; let ok = 0;
     for (let i = 0; i < n; i++) {
       const a = Math.max(i - 1, 0), b = Math.min(i + 1, n - 1);
       let dx = p[2 * b] - p[2 * a], dz = p[2 * b + 1] - p[2 * a + 1]; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
-      const x = p[2 * i] - cx, z = p[2 * i + 1] - cy, h = Math.max(height(x, z), 0) * ve + 3, hw = w / 2;
+      const x = p[2 * i] - cx, z = p[2 * i + 1] - cy, h = Math.max(height(x, z), 0) * ve + 3, hw = (ws ? ws[i] : w) / 2;
       pos.push(x - dz * hw, h, z + dx * hw, x + dz * hw, h, z - dx * hw);
       if (Math.abs(x) < R && Math.abs(z) < R) ok++;
       if (i) { const q = base + 2 * (i - 1); idx.push(q, q + 1, q + 2, q + 1, q + 3, q + 2); }
