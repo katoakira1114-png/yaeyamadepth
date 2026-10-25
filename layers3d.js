@@ -38,7 +38,17 @@ function bil(I, gx, gy, out) {
 }
 const tmp = [0, 0, 0, 0];
 export function landColor(gx, gy) { return tex && bil(tex, gx, gy, tmp) ? [tmp[0], tmp[1], tmp[2]] : null; }
-export function bottomColor(gx, gy, mode) { const I = mode === 3 ? ben : mode === 2 ? sat : bot; return I && bil(I, gx, gy, tmp) && tmp[3] > 2 ? [tmp[0], tmp[1], tmp[2], tmp[3] / 255] : null; }
+const BEN = {w: 5672, h: 4080};   // seabed-class raster covers the whole Yaeyama grid (20 m, origin 0,0)
+function bilBen(gx, gy, out) {
+  const I = ben, fx = gx / ST - 0.5, fy = gy / ST - 0.5;
+  if (!I || fx < 0 || fy < 0 || fx >= I.w - 1 || fy >= I.h - 1) return false;
+  const i = fx | 0, j = fy | 0, ax = fx - i, ay = fy - j, d = I.d, p = (j * I.w + i) * 4, q = p + I.w * 4;
+  for (let k = 0; k < 4; k++) out[k] = (d[p + k] * (1 - ax) + d[p + 4 + k] * ax) * (1 - ay) + (d[q + k] * (1 - ax) + d[q + 4 + k] * ax) * ay;
+  return true;
+}
+export function bottomColor(gx, gy, mode) {
+  if (mode === 3) return bilBen(gx, gy, tmp) && tmp[3] > 2 ? [tmp[0], tmp[1], tmp[2], tmp[3] / 255] : null;
+  const I = mode === 2 ? sat : bot; return I && bil(I, gx, gy, tmp) && tmp[3] > 2 ? [tmp[0], tmp[1], tmp[2], tmp[3] / 255] : null; }
 
 // ---- buildings ----
 export function buildings(cx, cy, R, ve) {
@@ -104,8 +114,12 @@ export function drapeMesh(geo) {
 
 let benTex = null;
 // seabed classes (Allen Coral Atlas) as the topmost layer: a transparent copy of the terrain above the satellite drape
-export function benthicOverlay(geo) {
+export function benthicOverlay(src, cx, cy) {
   if (!ben) return null;
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', src.attributes.position); if (src.attributes.normal) geo.setAttribute('normal', src.attributes.normal); geo.setIndex(src.index);
+  const p = src.attributes.position, uv = new Float32Array(p.count * 2);
+  for (let k = 0; k < p.count; k++) { uv[k * 2] = (cx + p.getX(k)) / (ben.w * ST); uv[k * 2 + 1] = 1 - (cy + p.getZ(k)) / (ben.h * ST); }
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   if (!benTex) { const c = document.createElement('canvas'); c.width = ben.w; c.height = ben.h; c.getContext('2d').drawImage(ben.bmp, 0, 0); benTex = new THREE.CanvasTexture(c); benTex.colorSpace = THREE.SRGBColorSpace; benTex.anisotropy = 4; benTex.wrapS = benTex.wrapT = THREE.ClampToEdgeWrapping; benTex.magFilter = THREE.NearestFilter; }
   const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({map: benTex, transparent: true, alphaTest: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4}));
   m.renderOrder = 2; return m;
