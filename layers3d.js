@@ -4,6 +4,7 @@ import * as THREE from './lib/three.module.min.js';
 
 const GX0 = 67340, GY0 = 5940, TW = 2048, TH = 2197, ST = 20;        // texture origin in grid metres, 20 m per pixel
 const PORT = {gx: 76405.97, gy: 33019.82, w: 4126.2, h: 3619.5};     // harbour photo (GSI) extent in grid metres
+let land = null;
 let A = null, drape = null, tex = null, bot = null, sat = null, bld = null, portImg = null, ready = null;
 const triCache = new Map();
 
@@ -20,11 +21,12 @@ export function init(api) {
     sat = st.value || null;
     try { const b = await createImageBitmap(await A.getData('data/v3/drape.webp'), {premultiplyAlpha: 'none'}); const c = document.createElement('canvas'); c.width = b.width; c.height = b.height; c.getContext('2d').drawImage(b, 0, 0); drape = c; } catch (e) { drape = null; }
     tex = t.value || null; bot = b.value || null; bld = j.value || null;
+    try { land = JSON.parse(await (await A.getData('data/v3/land.json')).text()); } catch (e) { land = null; }
     try { portImg = await createImageBitmap(await A.getData('data/v3/port.webp'), {imageOrientation: 'flipY', premultiplyAlpha: 'none'}); } catch (e) { portImg = null; }
   })();
   return ready;
 }
-export const has = () => ({land: !!tex, bottom: !!bot, bld: !!bld, port: !!portImg});
+export const has = () => ({land: !!tex, bottom: !!bot, bld: !!bld, port: !!portImg, rivers: !!land});
 
 function bil(I, gx, gy, out) {
   const fx = (gx - GX0) / ST - 0.5, fy = (gy - GY0) / ST - 0.5;
@@ -97,4 +99,27 @@ export function drapeMesh(geo) {
   if (!drapeTex) { drapeTex = new THREE.CanvasTexture(drape); drapeTex.colorSpace = THREE.SRGBColorSpace; drapeTex.anisotropy = 4; drapeTex.wrapS = drapeTex.wrapT = THREE.ClampToEdgeWrapping; }
   const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({map: drapeTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2}));
   m.renderOrder = 1; return m;
+}
+
+// ---- rivers, water bodies, roads (OpenStreetMap, via the handoff land-001 job) ----
+const dec = o => { const p = []; let x = o[0], y = o[1]; p.push(x, y); for (let i = 2; i < o.length; i += 2) { x += o[i]; y += o[i + 1]; p.push(x, y); } return p; };
+const ROAD_COL = [[0.95, 0.75, 0.3], [0.95, 0.85, 0.5], [0.92, 0.92, 0.88], [0.85, 0.85, 0.85], [0.7, 0.7, 0.7]];
+export function landLines(cx, cy, R, ve, height) {
+  if (!land) return null;
+  const pos = [], col = [];
+  const add = (pts, c, closed, lift) => {
+    const n = pts.length / 2;
+    for (let i = 0; i < n - 1 + (closed ? 1 : 0); i++) {
+      const j = (i + 1) % n, ax = pts[2 * i] - cx, az = pts[2 * i + 1] - cy, bx = pts[2 * j] - cx, bz = pts[2 * j + 1] - cy;
+      if (Math.abs(ax) > R || Math.abs(az) > R) continue;
+      pos.push(ax, Math.max(height(ax, az), 0) * ve + lift, az, bx, Math.max(height(bx, bz), 0) * ve + lift, bz);
+      col.push(c[0], c[1], c[2], c[0], c[1], c[2]);
+    }
+  };
+  for (const [, o] of land.rivers) add(dec(o), [0.2, 0.55, 1], false, 8);
+  for (const o of land.water) add(dec(o), [0.2, 0.55, 1], true, 8);
+  for (const [k, o] of land.roads) add(dec(o), ROAD_COL[k] || ROAD_COL[4], false, 6);
+  if (!pos.length) return null;
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  return new THREE.LineSegments(g, new THREE.LineBasicMaterial({vertexColors: true}));
 }

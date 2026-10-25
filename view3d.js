@@ -6,7 +6,7 @@ import {OrbitControls} from './lib/OrbitControls.js';
 
 const R_IN = 1500, ST_IN = 10, R_OUT = 6000, ST_OUT = 40;
 let A = null, root, renderer, scene, cam, ctl, ray = new THREE.Raycaster();
-let drapes = [], L = null, opt = {drape: true, land: true, bot: 0, bld: true, port: true}, bldMesh = null, portMesh = null;
+let drapes = [], L = null, opt = {drape: true, land: true, bot: 0, bld: true, port: true, lines: true}, bldMesh = null, portMesh = null, lineMesh = null;
 let center = null, ve = 5, terrain = [], water, me, meLine, trackLine = null, marks = null, building = false, follow = true, needs = false;
 const $ = id => document.getElementById(id);
 
@@ -49,6 +49,7 @@ function setup() {
   <label>海底の色 <select id="v3bot"><option value="0">なし</option><option value="2">衛星そのまま(浅場)</option><option value="1">補正色(10m以内・推定)</option></select></label>
   <label><input type="checkbox" id="v3bld" checked> 建物</label>
   <label><input type="checkbox" id="v3port" checked> 港の写真</label>
+  <label><input type="checkbox" id="v3ln" checked> 川・池・道路</label>
   <span>高さ×<b id="v3vev">5</b></span><input type="range" id="v3ve" min="1" max="10" step="0.5" value="5">
 </div>
 <div id="v3busy" class="card">地形を読み込み中…</div>`;
@@ -86,7 +87,7 @@ function setup() {
   $('v3here').onclick = () => { const h = A.here; if (!h) { A.toast('現在地がまだわかりません'); return; } follow = true; moveCenter(h.gx, h.gy); };
   $('v3water').onchange = e => { water.visible = e.target.checked; req(); };
   $('v3bot').onchange = e => { opt.bot = +e.target.value; applyOpt(); };
-  for (const [id, k] of [['v3dr', 'drape'], ['v3bld', 'bld'], ['v3port', 'port']]) $(id).onchange = e => { opt[k] = e.target.checked; applyOpt(); };
+  for (const [id, k] of [['v3dr', 'drape'], ['v3bld', 'bld'], ['v3port', 'port'], ['v3ln', 'lines']]) $(id).onchange = e => { opt[k] = e.target.checked; applyOpt(); };
   $('v3ve').oninput = e => { ve = +e.target.value; $('v3vev').textContent = ve; applyVE(); };
   addEventListener('resize', onResize);
   addEventListener('fix', onFix);
@@ -182,12 +183,13 @@ function addDrapes() {
   for (const t of terrain) { if (!t.geometry.attributes.uv) L.drapeUV(t.geometry, center.gx, center.gy); const d = L.drapeMesh(t.geometry); if (d) { drapes.push(d); scene.add(d); } }
 }
 function dropExtras() {
-  for (const m of [bldMesh, portMesh]) if (m) { scene.remove(m); m.geometry.dispose(); if (m.material.map) m.material.map.dispose(); m.material.dispose(); }
-  bldMesh = portMesh = null;
+  for (const m of [bldMesh, portMesh, lineMesh]) if (m) { scene.remove(m); m.geometry.dispose(); if (m.material.map) m.material.map.dispose(); m.material.dispose(); }
+  bldMesh = portMesh = lineMesh = null;
 }
 function buildExtras() {
   dropExtras(); if (!L) return;
   if (opt.bld) { bldMesh = L.buildings(center.gx, center.gy, 3500, ve); if (bldMesh) scene.add(bldMesh); }
+  if (opt.lines) { lineMesh = L.landLines(center.gx, center.gy, 3500, ve, (x, z) => { const s = A.sampleSync(center.gx + x, center.gy + z); return !s ? 0 : s.d === A.LAND ? s.elev : 0; }); if (lineMesh) scene.add(lineMesh); }
   if (opt.port) { portMesh = L.portPatch(center.gx, center.gy, R_OUT, ve, (x, z) => { const s = A.sampleSync(center.gx + x, center.gy + z); return !s ? 0 : s.d === A.LAND ? s.elev : s.d === A.STRUCTURE ? 3 : 0; }); if (portMesh) scene.add(portMesh); }
 }
 function recolor() {

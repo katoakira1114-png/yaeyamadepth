@@ -374,6 +374,32 @@ function drawBottom() {
   ctx.drawImage(im, x, y, 2048 * 20 * view.s, 2197 * 20 * view.s); ctx.restore();
 }
 
+
+// ---------- 川・池・道路を2D地図に重ねる（OpenStreetMap）----------
+let landOn = false, landData = null;
+const decL = o => { const p = []; let x = o[0], y = o[1]; p.push([x, y]); for (let i = 2; i < o.length; i += 2) { x += o[i]; y += o[i + 1]; p.push([x, y]); } return p; };
+const ROAD_W = ['#f0b040', '#f5d880', '#ececdf', '#d8d8d8', '#b8b8b8'];
+$('bLand').onclick = async () => {
+  landOn = !landOn; $('bLand').classList.toggle('on', landOn);
+  if (landOn && !landData) {
+    try { const d = JSON.parse(await (await getData('data/v3/land.json')).text()); landData = {rivers: d.rivers.map(([k, o]) => [k, decL(o)]), water: d.water.map(decL), roads: d.roads.map(([k, o]) => [k, decL(o)])}; }
+    catch (e) { toast('川・道路のデータを読み込めませんでした'); landOn = false; $('bLand').classList.remove('on'); return; }
+  }
+  toast(landOn ? '川・池・道路を表示（石垣島。OpenStreetMap）' : '川・池・道路: なし');
+  requestDraw();
+};
+function drawLand() {
+  if (!landOn || !landData) return;
+  const path = (pts, close) => { pts.forEach(([x, y], i) => { const [sx, sy] = g2s(x, y); i ? ctx.lineTo(sx, sy) : ctx.moveTo(sx, sy); }); if (close) ctx.closePath(); };
+  ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.fillStyle = 'rgba(60,140,255,0.55)'; ctx.strokeStyle = '#3c8cff'; ctx.lineWidth = 1;
+  for (const w of landData.water) { ctx.beginPath(); path(w, true); ctx.fill(); ctx.stroke(); }
+  for (const [k, pts] of landData.roads) { ctx.strokeStyle = ROAD_W[k] || ROAD_W[4]; ctx.lineWidth = Math.max(0.6, (k < 2 ? 5 : 3) * view.s); ctx.beginPath(); path(pts); ctx.stroke(); }
+  ctx.strokeStyle = '#2f80ff'; ctx.lineWidth = Math.max(1.2, 4 * view.s);
+  for (const [, pts] of landData.rivers) { ctx.beginPath(); path(pts); ctx.stroke(); }
+  ctx.restore();
+}
+
 // ---------- 最新版に更新 ----------
 // ブラウザ版: アプリ本体のキャッシュを捨てて取り直す。
 // Android アプリ: GitHub Pages の files.json と手元の版を比べ、変わったファイルだけ落として 'ota' キャッシュに入れる（sw.js が同梱ファイルより先に使う）。
