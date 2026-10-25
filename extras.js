@@ -368,7 +368,35 @@ $('bBot').onclick = async () => {
   toast(['海底の色: なし', '海底の色: 衛星写真そのまま（浅場。石垣島周辺のみ）', '海底の色: 補正色（水深10m以内、推定。明るい=砂、暗い=岩・サンゴ・海藻）', '底質（Allen Coral Atlas、八重山全域。赤=サンゴ/藻、茶=岩、黄=砂、橙茶=礫、緑=海草。非商用データ）'][botMode]);
   requestDraw();
 };
+let benVec = null, benVecLoading = false;
+const BEN_RGB = ['rgb(255,95,60)', 'rgb(110,95,90)', 'rgb(248,232,150)', 'rgb(190,150,105)', 'rgb(40,165,75)', 'rgb(130,205,130)'];
+async function loadBenVec() {
+  if (benVec || benVecLoading) return; benVecLoading = true;
+  try {
+    const blob = await getData('data/v3/benthic_vec.json.gz');
+    const txt = await new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).text();
+    benVec = JSON.parse(txt).map(([c, rings]) => {
+      const R = rings.map(o => { const a = new Float32Array(o.length); let x = o[0], y = o[1]; a[0] = x; a[1] = y; for (let i = 2; i < o.length; i += 2) { x += o[i]; y += o[i + 1]; a[i] = x; a[i + 1] = y; } return a; });
+      let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; const o = R[0];
+      for (let i = 0; i < o.length; i += 2) { if (o[i] < x0) x0 = o[i]; if (o[i] > x1) x1 = o[i]; if (o[i + 1] < y0) y0 = o[i + 1]; if (o[i + 1] > y1) y1 = o[i + 1]; }
+      return {c, R, bb: [x0, y0, x1, y1]};
+    });
+    requestDraw();
+  } catch (e) { benVec = null; }
+}
+function drawBenVec() { // polygons in the visible window, at the zoom where the 20 m raster looks blocky
+  const [gx0, gy0] = s2g(0, 0), [gx1, gy1] = s2g(VW, VH);
+  ctx.save(); ctx.globalAlpha = 0.8;
+  for (const p of benVec) {
+    const b = p.bb; if (b[2] < gx0 || b[0] > gx1 || b[3] < gy0 || b[1] > gy1) continue;
+    ctx.beginPath();
+    for (const r of p.R) { for (let i = 0; i < r.length; i += 2) { const [sx, sy] = g2s(r[i], r[i + 1]); i ? ctx.lineTo(sx, sy) : ctx.moveTo(sx, sy); } ctx.closePath(); }
+    ctx.fillStyle = BEN_RGB[p.c]; ctx.fill('evenodd');
+  }
+  ctx.restore();
+}
 function drawBottom() {
+  if (botMode === 3 && view.s > 0.08) { if (benVec) { drawBenVec(); return; } loadBenVec(); }
   const im = botMode && botImgs[botMode]; if (!im) return;
   const full = botMode === 3, [x, y] = g2s(full ? 0 : 67340, full ? 0 : 5940); ctx.save(); ctx.globalAlpha = botMode === 1 ? 0.9 : botMode === 3 ? 0.8 : 0.72; ctx.imageSmoothingEnabled = true;
   ctx.drawImage(im, x, y, (full ? 5672 : 2048) * 20 * view.s, (full ? 4080 : 2197) * 20 * view.s); ctx.restore();
@@ -405,6 +433,13 @@ function drawLand() {
 // Android アプリ: GitHub Pages の files.json と手元の版を比べ、変わったファイルだけ落として 'ota' キャッシュに入れる（sw.js が同梱ファイルより先に使う）。
 const OTA_BASE = 'https://katoakira1114-png.github.io/yaeyamadepth/';
 const UPD_LABEL = '最新版に更新（オンライン時）';
+async function diagText() {
+  const out = [];
+  try { out.push('SW: ' + (navigator.serviceWorker ? (navigator.serviceWorker.controller ? '動作中' : '未制御') : 'なし') + (window.__swErr ? '(エラー ' + window.__swErr + ')' : '')); } catch (e) { out.push('SW: ?'); }
+  try { const c = await caches.open('ota'); out.push('入替ファイル ' + (await c.keys()).length + '個'); } catch (e) { out.push('キャッシュ?'); }
+  return out.join(' / ');
+}
+async function showDiag() { try { $('verNote').textContent = $('verNote').textContent.split(' 診断:')[0] + ' 診断: ' + (window.__otaInfo ? window.__otaInfo + ' / ' : '') + await diagText(); } catch (e) {} }
 async function otaBuild() { // [packaged build, ota build]
   const j = async (u) => { try { const r = await fetch(u, {cache: 'no-store'}); return r.ok ? await r.json() : null; } catch (e) { return null; } };
   const pk = await j('files.json?b=1');
@@ -419,6 +454,7 @@ async function otaUpdate() {
   const r = await fetch(OTA_BASE + 'files.json?t=' + Date.now(), {cache: 'no-store'}); if (!r.ok) throw new Error('files.json ' + r.status);
   const remote = await r.json();
   const todo = Object.keys(remote.files).filter(p => base.files[p] !== remote.files[p]);
+  window.__otaInfo = '公開の版 ' + remote.build + ' / 手元の版 ' + (base.build || '?') + ' / 差分 ' + todo.length + '個';
   if (!todo.length) return 0;
   await caches.delete('ota-stage'); const st = await caches.open('ota-stage');
   let done = 0, i = 0;
@@ -444,7 +480,7 @@ $('verNote').textContent = NATIVE ? 'ボタンを押すと、インターネッ�
   try {
     const j = async u => { try { const r = await fetch(u); return r.ok ? (await r.json()).build : 0; } catch (e) { return 0; } };
     const run = await j('files.json'), pk = NATIVE ? await j('files.json?b=1') : 0;
-    $('verNote').textContent += ' 現在の版: ' + fmt(run) + (NATIVE ? '（同梱 ' + fmt(pk) + '）' : '');
+    $('verNote').textContent += ' 現在の版: ' + fmt(run) + (NATIVE ? '（同梱 ' + fmt(pk) + '）' : ''); setTimeout(showDiag, 1500);
   } catch (e) {}
 })();
 $('bUpd').onclick = async () => {
@@ -453,8 +489,8 @@ $('bUpd').onclick = async () => {
   try {
     if (NATIVE) {
       const n = await otaUpdate();
-      if (!n) { toast('すでに最新です'); $('bUpd').textContent = UPD_LABEL; $('bUpd').disabled = false; return; }
-      toast(n + ' 個のファイルを更新しました。再読み込みします');
+      if (!n) { toast('すでに最新です（' + window.__otaInfo + '）'); $('bUpd').textContent = UPD_LABEL; $('bUpd').disabled = false; showDiag(); return; }
+      toast(n + ' 個のファイルを更新しました（' + window.__otaInfo + '）。再読み込みします');
     } else {
       for (const k of await caches.keys()) if (k.startsWith('shell-')) await caches.delete(k);
       const r = await navigator.serviceWorker.getRegistration(); if (r) await r.update();
@@ -462,6 +498,7 @@ $('bUpd').onclick = async () => {
     }
     setTimeout(() => location.reload(), 800);
   } catch (e) { $('bUpd').textContent = UPD_LABEL; $('bUpd').disabled = false; toast('更新できませんでした（' + e.message + '）'); }
+  showDiag();
 };
 
 // ---------- 3D ----------

@@ -4,7 +4,7 @@ import * as THREE from './lib/three.module.min.js';
 
 const GX0 = 67340, GY0 = 5940, TW = 2048, TH = 2197, ST = 20;        // texture origin in grid metres, 20 m per pixel
 const PORT = {gx: 76405.97, gy: 33019.82, w: 4126.2, h: 3619.5};     // harbour photo (GSI) extent in grid metres
-let land = null, ben = null;
+let land = null, ben = null, benV = null;
 let A = null, drape = null, tex = null, bot = null, sat = null, bld = null, portImg = null, ready = null;
 const triCache = new Map();
 
@@ -22,6 +22,7 @@ export function init(api) {
     try { const b = await createImageBitmap(await A.getData('data/v3/drape.webp'), {premultiplyAlpha: 'none'}); const c = document.createElement('canvas'); c.width = b.width; c.height = b.height; c.getContext('2d').drawImage(b, 0, 0); drape = c; } catch (e) { drape = null; }
     tex = t.value || null; bot = b.value || null; bld = j.value || null;
     try { ben = await img('benthic.webp'); } catch (e) { ben = null; }
+    try { benV = await loadBenVec(A); } catch (e) { benV = null; }
     try { land = JSON.parse(await (await A.getData('data/v3/land.json')).text()); } catch (e) { land = null; }
     try { portImg = await createImageBitmap(await A.getData('data/v3/port.webp'), {imageOrientation: 'flipY', premultiplyAlpha: 'none'}); } catch (e) { portImg = null; }
   })();
@@ -112,16 +113,48 @@ export function drapeMesh(geo) {
   m.renderOrder = 1; return m;
 }
 
-let benTex = null;
+export async function loadBenVec(api) {
+  const blob = await api.getData('data/v3/benthic_vec.json.gz');
+  const txt = await new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).text();
+  return JSON.parse(txt).map(([c, rings]) => {
+    const R = rings.map(o => { const a = new Float32Array(o.length); let x = o[0], y = o[1]; a[0] = x; a[1] = y; for (let i = 2; i < o.length; i += 2) { x += o[i]; y += o[i + 1]; a[i] = x; a[i + 1] = y; } return a; });
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; const o = R[0];
+    for (let i = 0; i < o.length; i += 2) { if (o[i] < x0) x0 = o[i]; if (o[i] > x1) x1 = o[i]; if (o[i + 1] < y0) y0 = o[i + 1]; if (o[i + 1] > y1) y1 = o[i + 1]; }
+    return {c, R, bb: [x0, y0, x1, y1]};
+  });
+}
+export const BEN_RGB = ['rgb(255,95,60)', 'rgb(110,95,90)', 'rgb(248,232,150)', 'rgb(190,150,105)', 'rgb(40,165,75)', 'rgb(130,205,130)'];
+export function paintBenVec(g, polys, x0, y0, x1, y1, tx, ty, sc) {   // grid-metre window -> canvas pixels
+  for (const p of polys) {
+    const b = p.bb; if (b[2] < x0 || b[0] > x1 || b[3] < y0 || b[1] > y1) continue;
+    g.beginPath();
+    for (const r of p.R) { for (let i = 0; i < r.length; i += 2) { const X = (r[i] - tx) * sc, Y = (r[i + 1] - ty) * sc; i ? g.lineTo(X, Y) : g.moveTo(X, Y); } g.closePath(); }
+    g.fillStyle = BEN_RGB[p.c]; g.fill('evenodd');
+  }
+}
+let benTex = null, benKey = '';
 // seabed classes (Allen Coral Atlas) as the topmost layer: a transparent copy of the terrain above the satellite drape
 export function benthicOverlay(src, cx, cy) {
-  if (!ben) return null;
+  if (!ben && !benV) return null;
+  const E = 4000, N = 3072;
+  if (benV) {
+    const key = cx + ',' + cy;
+    if (key !== benKey) {
+      const c = document.createElement('canvas'); c.width = c.height = N; const g = c.getContext('2d');
+      paintBenVec(g, benV, cx - E, cy - E, cx + E, cy + E, cx - E, cy - E, N / (2 * E));
+      if (benTex) benTex.dispose();
+      benTex = new THREE.CanvasTexture(c); benTex.colorSpace = THREE.SRGBColorSpace; benTex.anisotropy = 4; benTex.wrapS = benTex.wrapT = THREE.ClampToEdgeWrapping; benKey = key;
+    }
+  }
   const geo = new THREE.BufferGeometry(); geo.setAttribute('position', src.attributes.position); if (src.attributes.normal) geo.setAttribute('normal', src.attributes.normal); geo.setIndex(src.index);
   const p = src.attributes.position, uv = new Float32Array(p.count * 2);
-  for (let k = 0; k < p.count; k++) { uv[k * 2] = (cx + p.getX(k)) / (ben.w * ST); uv[k * 2 + 1] = 1 - (cy + p.getZ(k)) / (ben.h * ST); }
+  for (let k = 0; k < p.count; k++) {
+    if (benV) { uv[k * 2] = (p.getX(k) + E) / (2 * E); uv[k * 2 + 1] = 1 - (p.getZ(k) + E) / (2 * E); }
+    else { uv[k * 2] = (cx + p.getX(k)) / (ben.w * ST); uv[k * 2 + 1] = 1 - (cy + p.getZ(k)) / (ben.h * ST); }
+  }
   geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-  if (!benTex) { const c = document.createElement('canvas'); c.width = ben.w; c.height = ben.h; c.getContext('2d').drawImage(ben.bmp, 0, 0); benTex = new THREE.CanvasTexture(c); benTex.colorSpace = THREE.SRGBColorSpace; benTex.anisotropy = 4; benTex.wrapS = benTex.wrapT = THREE.ClampToEdgeWrapping; benTex.magFilter = THREE.NearestFilter; }
-  const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({map: benTex, transparent: true, alphaTest: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4}));
+  if (!benV && !benTex) { const c = document.createElement('canvas'); c.width = ben.w; c.height = ben.h; c.getContext('2d').drawImage(ben.bmp, 0, 0); benTex = new THREE.CanvasTexture(c); benTex.colorSpace = THREE.SRGBColorSpace; benTex.anisotropy = 4; benTex.wrapS = benTex.wrapT = THREE.ClampToEdgeWrapping; benTex.magFilter = THREE.NearestFilter; }
+  const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({map: benTex, transparent: true, alphaTest: benV ? 0.05 : 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4}));
   m.renderOrder = 2; return m;
 }
 
