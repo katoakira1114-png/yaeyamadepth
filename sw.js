@@ -1,6 +1,6 @@
 // Service Worker: app shell is precached; depth data lives in its own cache,
 // filled by the page's download button (and by any tile fetched while online).
-const SHELL = 'shell-v24';
+const SHELL = 'shell-v25';
 const OTA = 'ota'; // files downloaded by the in-app update button; they win over the packaged ones
 const DATA = 'yaeyama-data-v1';
 const SHELL_FILES = ['./', 'index.html', 'native.js', 'app.js', 'extras.js', 'view3d.js', 'layers3d.js', 'lib/three.module.min.js', 'lib/OrbitControls.js',

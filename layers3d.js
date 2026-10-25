@@ -5,7 +5,7 @@ import * as THREE from './lib/three.module.min.js';
 const GX0 = 67340, GY0 = 5940, TW = 2048, TH = 2197, ST = 20;        // texture origin in grid metres, 20 m per pixel
 const PORT = {gx: 76405.97, gy: 33019.82, w: 4126.2, h: 3619.5};     // harbour photo (GSI) extent in grid metres
 let land = null, ben = null, benV = null;
-let est = null, brg = null, treeImg = null, A = null, drape = null, tex = null, bot = null, sat = null, bld = null, portImg = null, ready = null;
+let furn = null, est = null, brg = null, treeImg = null, A = null, drape = null, tex = null, bot = null, sat = null, bld = null, portImg = null, ready = null;
 const triCache = new Map();
 
 async function img(name) {
@@ -22,6 +22,7 @@ export function init(api) {
     try { const b = await createImageBitmap(await A.getData('data/v3/drape.webp'), {premultiplyAlpha: 'none'}); const c = document.createElement('canvas'); c.width = b.width; c.height = b.height; c.getContext('2d').drawImage(b, 0, 0); drape = c; } catch (e) { drape = null; }
     tex = t.value || null; bot = b.value || null; bld = j.value || null;
     try { ben = await img('benthic.webp'); } catch (e) { ben = null; }
+    try { furn = JSON.parse(await (await A.getData('data/v3/furn.json')).text()); } catch (e) { furn = null; }
     try { est = JSON.parse(await (await A.getData('data/v3/estuary.json')).text()); } catch (e) { est = null; }
     try { brg = JSON.parse(await (await A.getData('data/v3/bridges.json')).text()); } catch (e) { brg = null; }
     try { treeImg = await img('trees.webp'); } catch (e) { treeImg = null; }
@@ -312,4 +313,19 @@ export function estuary(cx, cy, R, ve, height) {
   if (!idx.length) return null;
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx);
   return new THREE.Mesh(g, new THREE.MeshBasicMaterial({color: 0x4d96a6, side: THREE.DoubleSide, transparent: true, opacity: 0.85}));
+}
+
+// ---- street furniture: [type, x, y] in decimetres from the texture origin. 0 signal, 1 utility pole, 2 bus stop ----
+const FURN = [{h: 6, r: 0.18, c: 0x555a5e}, {h: 9, r: 0.22, c: 0x8a8378}, {h: 2.6, r: 0.08, c: 0x2a8f5a}];
+export function furniture(cx, cy, R, ve, height) {
+  if (!furn) return null;
+  const grp = new THREE.Group(), bs = Math.max(1, ve * 0.6);
+  for (let k = 0; k < FURN.length; k++) {
+    const pts = furn.filter(o => o[0] === k && Math.abs(GX0 + o[1] / 10 - cx) < R && Math.abs(GY0 + o[2] / 10 - cy) < R); if (!pts.length) continue;
+    const F = FURN[k], g = new THREE.CylinderGeometry(F.r, F.r, 1, 6); g.translate(0, 0.5, 0);
+    const m = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({color: F.c}), pts.length), M = new THREE.Matrix4(), q = new THREE.Quaternion();
+    pts.forEach((o, i) => { const x = GX0 + o[1] / 10 - cx, z = GY0 + o[2] / 10 - cy; M.compose(new THREE.Vector3(x, Math.max(height(x, z), 0) * ve, z), q, new THREE.Vector3(Math.max(1, bs / 2), F.h * bs, Math.max(1, bs / 2))); m.setMatrixAt(i, M); });
+    m.instanceMatrix.needsUpdate = true; grp.add(m);
+  }
+  return grp.children.length ? grp : null;
 }
