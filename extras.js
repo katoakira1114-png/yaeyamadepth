@@ -374,6 +374,19 @@ function drawBottom() {
   ctx.drawImage(im, x, y, 2048 * 20 * view.s, 2197 * 20 * view.s); ctx.restore();
 }
 
+// ---------- 最新版に更新（ブラウザ版/ホーム画面版）----------
+$('verNote').textContent = NATIVE ? 'Android アプリは、新しい APK を入れると更新されます。' : 'ブラウザ版は、オンラインのときに上のボタンで最新版に入れ替えます。';
+$('bUpd').hidden = !!NATIVE;
+$('bUpd').onclick = async () => {
+  if (!navigator.onLine) { toast('オフラインです。電波のあるところで押してください'); return; }
+  $('bUpd').textContent = '更新中…';
+  try {
+    for (const k of await caches.keys()) if (k.startsWith('shell-')) await caches.delete(k);
+    const r = await navigator.serviceWorker.getRegistration(); if (r) await r.update();
+    toast('更新しました。再読み込みします'); setTimeout(() => location.reload(), 800);
+  } catch (e) { $('bUpd').textContent = '最新版に更新（オンライン時）'; toast('更新できませんでした（' + e.message + '）'); }
+};
+
 // ---------- 3D ----------
 let v3 = null;
 $('b3d').onclick = async () => {
