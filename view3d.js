@@ -198,7 +198,7 @@ function buildExtras() {
   if (opt.lines) { furM = L.furniture(center.gx, center.gy, 2500, ve, (x, z) => { const s = A.sampleSync(center.gx + x, center.gy + z); return !s ? 0 : s.d === A.LAND ? s.elev : 0; }); if (furM) scene.add(furM); }
   if (opt.lines) { estM = L.estuary(center.gx, center.gy, 3500, ve, (x, z) => { const s = A.sampleSync(center.gx + x, center.gy + z); return !s ? 0 : s.d === A.LAND ? s.elev : 0; }); if (estM) scene.add(estM); }
   if (opt.lines) { brgM = L.bridges(center.gx, center.gy, 3500, ve, (x, z) => { const s = A.sampleSync(center.gx + x, center.gy + z); return !s ? 0 : s.d === A.LAND ? s.elev : 0; }); if (brgM) scene.add(brgM); }
-  if (opt.trees) { treeM = L.trees(center.gx, center.gy, 3000, ve, (x, z) => { const s = A.sampleSync(center.gx + x, center.gy + z); return !s ? 0 : s.d === A.LAND ? s.elev : 0; }); if (treeM) scene.add(treeM); }
+  if (opt.trees) { treeM = L.trees(center.gx, center.gy, 3000, ve, (x, z) => { const s = A.sampleSync(center.gx + x, center.gy + z); return !s || s.d !== A.LAND ? -1 : s.elev; }); if (treeM) scene.add(treeM); }
   if (opt.port) { portMesh = L.portPatch(center.gx, center.gy, R_OUT, ve, (x, z) => { const s = A.sampleSync(center.gx + x, center.gy + z); return !s ? 0 : s.d === A.LAND ? s.elev : s.d === A.STRUCTURE ? 3 : 0; }); if (portMesh) scene.add(portMesh); }
 }
 function recolor() {

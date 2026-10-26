@@ -1,5 +1,5 @@
 {
-"build": 1792981707,
+"build": 1792983580,
 "files": {
 "app.js": "d6cdccebeeae21a9d2e45db625a17eaae37f2ce1",
 "apple-touch-icon.png": "3af0f93b82791d4b7222f49bccd115256cfb53ee",
@@ -264,12 +264,12 @@
 "icon-192.png": "7f4cb0c9c3c924387fa2db3f04b3d0611a5925c9",
 "icon-512.png": "0859138fc55fad135e6be478c2ae53dc13b825b8",
 "index.html": "37b9cf26343bac69df998e0a9a73576b792924dd",
-"layers3d.js": "ae1a49e9d89e111f3aa03d61a8b82a2cb05c01b8",
+"layers3d.js": "cb8a14207506d308030f8bcda66b5e11a651c517",
 "lib/OrbitControls.js": "8d70e388a0dd5a676de948878a816c41e8e20166",
 "lib/three-LICENSE.txt": "e64e644435ab71c7a646b90d47843001ed4eecc3",
 "lib/three.module.min.js": "512c8b83df15a015a5ed8fcf7e580be4b46ce4ee",
 "manifest.webmanifest": "14278500662549c35d2329f69d32a3bb5289ee58",
 "native.js": "adf3300352d5af10c37dcbceb85bd41345b05e5a",
-"view3d.js": "615e99a66f2642e998d53ecf10c61f57fe69ecc0"
+"view3d.js": "80c90f1f733ffcb1bb7522fa2b0c1f388760576a"
 }
 }

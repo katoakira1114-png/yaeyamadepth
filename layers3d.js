@@ -263,6 +263,7 @@ export function trees(cx, cy, R, ve, height) {
     const hs = ((i * 73856093) ^ (j * 19349663)) >>> 0;
     P.push(x + ((hs & 255) / 255 - 0.5) * 6 * s, z + ((hs >> 8 & 255) / 255 - 0.5) * 6 * s, v / 4 * 0.7, s, hs);
   }
+  for (let k = P.length / 5 - 1; k >= 0; k--) if (height(P[k * 5], P[k * 5 + 1]) < 0) P.splice(k * 5, 5);   // no trees on cells the grid treats as water (estuary pools, channels)
   const n = P.length / 5; if (!n) return null;
   const g = new THREE.ConeGeometry(1, 1, 5); g.translate(0, 0.5, 0);
   const m = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({color: 0xffffff}), n), M = new THREE.Matrix4(), q = new THREE.Quaternion(), c = new THREE.Color();
