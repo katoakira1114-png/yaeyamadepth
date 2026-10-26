@@ -365,7 +365,7 @@ $('bBot').onclick = async () => {
     try { botImgs[botMode] = await loadBitmap(await getData(BOTF[botMode])); }
     catch (e) { toast('海底の色データを読み込めませんでした'); botMode = 0; $('bBot').classList.remove('on'); }
   }
-  toast(['海底の色: なし', '海底の色: 衛星写真そのまま（浅場。石垣島周辺のみ）', '海底の色: 補正色（水深10m以内、推定。明るい=砂、暗い=岩・サンゴ・海藻）', '底質（Allen Coral Atlas、八重山全域。赤=サンゴ/藻、茶=岩、黄=砂、橙茶=礫、緑=海草。非商用データ）', '潮間帯・湿地（青=満潮と干潮で水の反応が変わる帯、濃緑=マングローブ、薄緑=湿地。衛星の光スペクトルとWorldCover）'][botMode]);
+  toast(['海底の色: なし', '海底の色: 衛星写真そのまま（浅場。石垣島周辺のみ）', '海底の色: 補正色（水深10m以内、推定。明るい=砂、暗い=岩・サンゴ・海藻）', '底質（Allen Coral Atlas、八重山全域。赤=サンゴ/藻、茶=岩、黄=砂、橙茶=礫、緑=海草。非商用データ）', '潮間帯・湿地（青=満潮で冠水し干潮で干上がる帯、橙=大潮の最高潮位だけ冠水、濃緑=マングローブ、薄緑=湿地。5m標高×気象庁の潮位基準+衛星の光スペクトル+WorldCover）'][botMode]);
   requestDraw();
 };
 let benVec = null, benVecLoading = false;
