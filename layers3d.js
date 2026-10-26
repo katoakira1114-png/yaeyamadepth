@@ -327,11 +327,14 @@ export function structures(cx, cy, R, ve) {
           idx.push(q, q + 1, r, q + 1, r + 1, r, q + 2, r + 2, q + 3, q + 3, r + 2, r + 3, q, r, q + 2, r, r + 2, q + 2, q + 1, q + 3, r + 1, r + 1, q + 3, r + 3); }
       }
     } else {
-      const v = []; for (let i = 0; i < n; i++) v.push(new THREE.Vector2(p[2 * i], p[2 * i + 1]));
-      const tri = THREE.ShapeUtils.triangulateShape(v, []);
-      for (let i = 0; i < n; i++) pos.push(v[i].x, top, v[i].y, v[i].x, bot, v[i].y);
+      let v = []; for (let i = 0; i < n; i++) v.push(new THREE.Vector2(p[2 * i], p[2 * i + 1]));
+      const v0 = v.slice(); if (v.length > 1 && v[0].equals(v[v.length - 1])) v.pop();
+      if (v.length < 3) continue;
+      const tri = THREE.ShapeUtils.triangulateShape(v.slice(), []); v = v0.length === v.length ? v0 : v;
+      const nn = v.length;
+      for (let i = 0; i < nn; i++) pos.push(v[i].x, top, v[i].y, v[i].x, bot, v[i].y);
       for (const t of tri) idx.push(base + 2 * t[0], base + 2 * t[1], base + 2 * t[2]);
-      for (let i = 0; i < n; i++) { const j = (i + 1) % n, a = base + 2 * i, b = base + 2 * j; idx.push(a, a + 1, b, b, a + 1, b + 1); }
+      for (let i = 0; i < nn; i++) { const j = (i + 1) % nn, a = base + 2 * i, b = base + 2 * j; idx.push(a, a + 1, b, b, a + 1, b + 1); }
     }
   }
   if (!idx.length) return null;
