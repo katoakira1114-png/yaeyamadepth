@@ -339,6 +339,22 @@ export function structures(cx, cy, R, ve) {
   return new THREE.Mesh(g, new THREE.MeshLambertMaterial({color: 0xb4b0a6, side: THREE.DoubleSide}));
 }
 
+// cells near breakwaters/piers: the smoothed DEM piles up spikes there, so the terrain is flattened and the explicit body stands on it
+let nearSet = null;
+export function nearStructure(gx, gy) {
+  if (!strc) return false;
+  if (!nearSet) {
+    nearSet = new Set(); const Rr = 4;
+    const stamp = (x, y) => { for (let i = -Rr; i <= Rr; i++) for (let j = -Rr; j <= Rr; j++) if (i * i + j * j <= Rr * Rr) nearSet.add((Math.round(x / 4) + i) + ',' + (Math.round(y / 4) + j)); };
+    for (const [, , o, m] of strc) {
+      if (!m) continue;
+      const n = o.length / 2;
+      for (let i = 0; i < n; i++) { const x = GX0 + o[2 * i] / 10, y = GY0 + o[2 * i + 1] / 10, j = (i + 1) % n, x2 = GX0 + o[2 * j] / 10, y2 = GY0 + o[2 * j + 1] / 10, k = Math.max(1, Math.ceil(Math.hypot(x2 - x, y2 - y) / 4)); for (let q = 0; q <= k; q++) stamp(x + (x2 - x) * q / k, y + (y2 - y) * q / k); }
+    }
+  }
+  return nearSet.has(Math.round(gx / 4) + ',' + Math.round(gy / 4));
+}
+
 // ---- turbid estuary water (Sentinel-2 MNDWI) that the land mask treats as land: flat fill just above the ground ----
 export function estuary(cx, cy, R, ve, height) {
   if (!est) return null;
