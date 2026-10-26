@@ -185,6 +185,7 @@ function addDrapes() {
   if (opt.bot === 3) for (const t of terrain) { const d = L.benthicOverlay(t.geometry, center.gx, center.gy); if (d) { drapes.push(d); scene.add(d); } }
   if (!L.hasDrape() || !opt.drape) return;
   for (const t of terrain) { if (!t.geometry.attributes.uv) L.drapeUV(t.geometry, center.gx, center.gy); const d = L.drapeMesh(t.geometry); if (d) { drapes.push(d); scene.add(d); } }
+  for (const t of terrain) for (const d of L.photoOverlays(t.geometry, center.gx, center.gy)) { drapes.push(d); scene.add(d); }
 }
 function dropExtras() {
   for (const m0 of [bldMesh, portMesh, lineMesh, riverM, treeM, brgM, estM, furM]) if (m0) { scene.remove(m0); m0.traverse(m => { if (!m.geometry) return; m.geometry.dispose(); for (const mt of [].concat(m.material)) { if (mt !== undefined && mt.map && m !== bldMesh) mt.map.dispose(); mt.dispose(); } }); }

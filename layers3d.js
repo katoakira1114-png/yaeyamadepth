@@ -5,7 +5,7 @@ import * as THREE from './lib/three.module.min.js';
 const GX0 = 67340, GY0 = 5940, TW = 2048, TH = 2197, ST = 20;        // texture origin in grid metres, 20 m per pixel
 const PORT = {gx: 76405.97, gy: 33019.82, w: 4126.2, h: 3619.5};     // harbour photo (GSI) extent in grid metres
 let land = null, ben = null, benV = null;
-let wetI = null, furn = null, est = null, brg = null, treeImg = null, A = null, drape = null, tex = null, bot = null, sat = null, bld = null, portImg = null, ready = null;
+let phIdx = null, wetI = null, furn = null, est = null, brg = null, treeImg = null, A = null, drape = null, tex = null, bot = null, sat = null, bld = null, portImg = null, ready = null;
 const triCache = new Map(), wetCache = new Map();
 
 async function img(name) {
@@ -22,6 +22,7 @@ export function init(api) {
     try { const b = await createImageBitmap(await A.getData('data/v3/drape.webp'), {premultiplyAlpha: 'none'}); const c = document.createElement('canvas'); c.width = b.width; c.height = b.height; c.getContext('2d').drawImage(b, 0, 0); drape = c; } catch (e) { drape = null; }
     tex = t.value || null; bot = b.value || null; bld = j.value || null;
     try { ben = await img('benthic.webp'); } catch (e) { ben = null; }
+    try { phIdx = JSON.parse(await (await A.getData('data/v3/photo/idx.json')).text()); } catch (e) { phIdx = null; }
     try { wetI = await img('wetland.webp'); } catch (e) { wetI = null; }
     try { furn = JSON.parse(await (await A.getData('data/v3/furn.json')).text()); } catch (e) { furn = null; }
     try { est = JSON.parse(await (await A.getData('data/v3/estuary.json')).text()); } catch (e) { est = null; }
@@ -347,4 +348,42 @@ export function wetOverlay(src) {
   geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({map: wetTex, transparent: true, alphaTest: 0.05, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6}));
   m.renderOrder = 3; return m;
+}
+
+// ---- aerial photo (GSI seamless photo, re-projected to the app grid offline): 2.5 m/px island-wide + 0.7 m/px in town/airport/Kabira/Shiraho/Nagura, only where the satellite drape already has alpha ----
+const PH = {lo: {res: 2.5, n: 1024, E: 3840, N: 3072, z: 1.1, off: -2.5}, hi: {res: 0.7, n: 1024, E: 1075, N: 3072, z: 1.2, off: -3}};
+const phBmp = new Map(), phTex = {};
+async function phTile(kind, i, j) {
+  const k = kind + '_' + i + '_' + j;
+  if (!phBmp.has(k)) phBmp.set(k, A.getData('data/v3/photo/' + k + '.webp').then(b => createImageBitmap(b, {premultiplyAlpha: 'none'})).catch(() => null));
+  return phBmp.get(k);
+}
+function phCanvas(kind, cx, cy) {
+  const P = PH[kind], key = kind + cx + ',' + cy;
+  if (phTex[kind] && phTex[kind].key === key) return phTex[kind].tex;
+  if (phTex[kind]) phTex[kind].tex.dispose();
+  const c = document.createElement('canvas'); c.width = c.height = P.N; const g = c.getContext('2d');
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4; tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+  phTex[kind] = {key, tex};
+  const span = P.n * P.res, x0 = cx - P.E, y0 = cy - P.E;   // window origin in grid metres; canvas px = metres / res
+  for (const [i, j] of phIdx[kind]) {
+    const tx = GX0 + i * span, ty = GY0 + j * span;
+    if (tx > x0 + 2 * P.E || tx + span < x0 || ty > y0 + 2 * P.E || ty + span < y0) continue;
+    phTile(kind, i, j).then(b => { if (!b || phTex[kind].key !== key) return; g.drawImage(b, (tx - x0) / P.res, (ty - y0) / P.res, P.n, P.n); tex.needsUpdate = true; });
+  }
+  return tex;
+}
+export function photoOverlays(src, cx, cy) {
+  if (!phIdx) return [];
+  const out = [];
+  for (const kind of ['lo', 'hi']) {
+    const P = PH[kind], tex = phCanvas(kind, cx, cy);
+    const geo = new THREE.BufferGeometry(); geo.setAttribute('position', src.attributes.position); if (src.attributes.normal) geo.setAttribute('normal', src.attributes.normal); geo.setIndex(src.index);
+    const p = src.attributes.position, uv = new Float32Array(p.count * 2);
+    for (let k = 0; k < p.count; k++) { uv[k * 2] = (p.getX(k) + P.E) / (2 * P.E); uv[k * 2 + 1] = 1 - (p.getZ(k) + P.E) / (2 * P.E); }
+    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({map: tex, transparent: true, alphaTest: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: P.off, polygonOffsetUnits: P.off}));
+    m.renderOrder = P.z; out.push(m);
+  }
+  return out;
 }
