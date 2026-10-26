@@ -6,7 +6,7 @@ const GX0 = 67340, GY0 = 5940, TW = 2048, TH = 2197, ST = 20;        // texture 
 const PORT = {gx: 76405.97, gy: 33019.82, w: 4126.2, h: 3619.5};     // harbour photo (GSI) extent in grid metres
 let land = null, ben = null, benV = null;
 let furn = null, est = null, brg = null, treeImg = null, A = null, drape = null, tex = null, bot = null, sat = null, bld = null, portImg = null, ready = null;
-const triCache = new Map();
+const triCache = new Map(), wetCache = new Map();
 
 async function img(name) {
   const bmp = await createImageBitmap(await A.getData('data/v3/' + name), {premultiplyAlpha: 'none', colorSpaceConversion: 'none'});
@@ -81,21 +81,24 @@ export function buildings(cx, cy, R, ve) {
       for (let i = 0; i < d.length; i += 2) v.push(new THREE.Vector2((b[0] + d[i]) / 10, (b[1] + d[i + 1]) / 10));
       T = {v, tri: THREE.ShapeUtils.triangulateShape(v, [])}; triCache.set(n, T);
     }
-    const base = b[4] / 10 * ve, y0 = base - 1, y1 = base + b[3] / 10 * bs, rgb = b[5], floors = Math.max(1, b[3] / 10 / 3.2);
+    // footprints standing on structure/sea cells are breakwaters, piers and quays: low plain slabs, no windows
+    let wet = wetCache.get(n); if (wet === undefined) { const sm = A.sampleSync(gx + (b[2][0] || 0) / 20, gy + (b[2][1] || 0) / 20); wet = !!sm && sm.d !== A.LAND; wetCache.set(n, wet); }
+    const base = b[4] / 10 * ve, y0 = base - 1, y1 = base + (wet ? Math.min(b[3], 20) : b[3]) / 10 * bs, rgb = wet ? 0xa8a49a : b[5], floors = Math.max(1, b[3] / 10 / 3.2);
+    const WT = wet ? RP : W;
     const r = (rgb >> 16 & 255) / 255, g = (rgb >> 8 & 255) / 255, bl = (rgb & 255) / 255, k = 0.85;
     const ox = GX0 - cx, oy = GY0 - cy, v = T.v;
     for (let i = 0; i < v.length; i++) {
       const a = v[i], c = v[(i + 1) % v.length];
       const ax = a.x + ox, az = a.y + oy, cx2 = c.x + ox, cz = c.y + oy, u1 = Math.hypot(c.x - a.x, c.y - a.y) / 3.2;
-      W.p.push(ax, y0, az, cx2, y0, cz, cx2, y1, cz, ax, y0, az, cx2, y1, cz, ax, y1, az);
-      W.u.push(0, 0, u1, 0, u1, floors, 0, 0, u1, floors, 0, floors);
-      for (let q = 0; q < 6; q++) W.c.push(0.55 + r * k * 0.45, 0.55 + g * k * 0.45, 0.55 + bl * k * 0.45);
+      WT.p.push(ax, y0, az, cx2, y0, cz, cx2, y1, cz, ax, y0, az, cx2, y1, cz, ax, y1, az);
+      if (!wet) W.u.push(0, 0, u1, 0, u1, floors, 0, 0, u1, floors, 0, floors);
+      for (let q = 0; q < 6; q++) WT.c.push(0.55 + r * k * 0.45, 0.55 + g * k * 0.45, 0.55 + bl * k * 0.45);
     }
     const inPort = portImg && gx > PORT.gx && gx < PORT.gx + PORT.w && gy > PORT.gy && gy < PORT.gy + PORT.h;
-    const D = inPort ? RF : RP;
+    const D = inPort && !wet ? RF : RP;
     for (const t of T.tri) for (const q of t) {
       D.p.push(v[q].x + ox, y1, v[q].y + oy);
-      if (inPort) { D.c.push(1, 1, 1); D.u.push((v[q].x + GX0 - PORT.gx) / PORT.w, 1 - (v[q].y + GY0 - PORT.gy) / PORT.h); }
+      if (D === RF) { D.c.push(1, 1, 1); D.u.push((v[q].x + GX0 - PORT.gx) / PORT.w, 1 - (v[q].y + GY0 - PORT.gy) / PORT.h); }
       else D.c.push(r, g, bl);
     }
   }
