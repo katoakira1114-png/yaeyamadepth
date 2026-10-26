@@ -46,7 +46,7 @@ function setup() {
   <button id="v3here">現在地を中心に</button>
   <label><input type="checkbox" id="v3water" checked> 海面</label>
   <label><input type="checkbox" id="v3dr" checked> 衛星写真を貼る(陸＋浅場)</label>
-  <label>海底の色 <select id="v3bot"><option value="0">なし</option><option value="2">衛星そのまま(浅場)</option><option value="1">補正色(10m以内・推定)</option><option value="3">底質(Allen Coral Atlas)</option></select></label>
+  <label>海底の色 <select id="v3bot"><option value="0">なし</option><option value="2">衛星そのまま(浅場)</option><option value="1">補正色(10m以内・推定)</option><option value="3">底質(Allen Coral Atlas)</option><option value="4">潮間帯・湿地(衛星の光スペクトル+WorldCover)</option></select></label>
   <label><input type="checkbox" id="v3bld" checked> 建物</label>
   <label><input type="checkbox" id="v3port" checked> 港の写真</label>
   <label><input type="checkbox" id="v3ln" checked> 川・池・道路</label>
@@ -181,6 +181,7 @@ async function rebuild() {
 function addDrapes() {
   for (const m of drapes) { scene.remove(m); m.material.dispose(); } drapes = [];
   if (!L) return;
+  if (opt.bot === 4) for (const t of terrain) { t.geometry.userData.cx = center.gx; t.geometry.userData.cy = center.gy; const d = L.wetOverlay(t.geometry); if (d) { drapes.push(d); scene.add(d); } }
   if (opt.bot === 3) for (const t of terrain) { const d = L.benthicOverlay(t.geometry, center.gx, center.gy); if (d) { drapes.push(d); scene.add(d); } }
   if (!L.hasDrape() || !opt.drape) return;
   for (const t of terrain) { if (!t.geometry.attributes.uv) L.drapeUV(t.geometry, center.gx, center.gy); const d = L.drapeMesh(t.geometry); if (d) { drapes.push(d); scene.add(d); } }

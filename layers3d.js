@@ -5,7 +5,7 @@ import * as THREE from './lib/three.module.min.js';
 const GX0 = 67340, GY0 = 5940, TW = 2048, TH = 2197, ST = 20;        // texture origin in grid metres, 20 m per pixel
 const PORT = {gx: 76405.97, gy: 33019.82, w: 4126.2, h: 3619.5};     // harbour photo (GSI) extent in grid metres
 let land = null, ben = null, benV = null;
-let furn = null, est = null, brg = null, treeImg = null, A = null, drape = null, tex = null, bot = null, sat = null, bld = null, portImg = null, ready = null;
+let wetI = null, furn = null, est = null, brg = null, treeImg = null, A = null, drape = null, tex = null, bot = null, sat = null, bld = null, portImg = null, ready = null;
 const triCache = new Map(), wetCache = new Map();
 
 async function img(name) {
@@ -22,6 +22,7 @@ export function init(api) {
     try { const b = await createImageBitmap(await A.getData('data/v3/drape.webp'), {premultiplyAlpha: 'none'}); const c = document.createElement('canvas'); c.width = b.width; c.height = b.height; c.getContext('2d').drawImage(b, 0, 0); drape = c; } catch (e) { drape = null; }
     tex = t.value || null; bot = b.value || null; bld = j.value || null;
     try { ben = await img('benthic.webp'); } catch (e) { ben = null; }
+    try { wetI = await img('wetland.webp'); } catch (e) { wetI = null; }
     try { furn = JSON.parse(await (await A.getData('data/v3/furn.json')).text()); } catch (e) { furn = null; }
     try { est = JSON.parse(await (await A.getData('data/v3/estuary.json')).text()); } catch (e) { est = null; }
     try { brg = JSON.parse(await (await A.getData('data/v3/bridges.json')).text()); } catch (e) { brg = null; }
@@ -52,6 +53,7 @@ function bilBen(gx, gy, out) {
   return true;
 }
 export function bottomColor(gx, gy, mode) {
+  if (mode === 4) return null;
   if (mode === 3) return bilBen(gx, gy, tmp) && tmp[3] > 2 ? [tmp[0], tmp[1], tmp[2], tmp[3] / 255] : null;
   const I = mode === 2 ? sat : bot; return I && bil(I, gx, gy, tmp) && tmp[3] > 2 ? [tmp[0], tmp[1], tmp[2], tmp[3] / 255] : null; }
 
@@ -331,4 +333,17 @@ export function furniture(cx, cy, R, ve, height) {
     m.instanceMatrix.needsUpdate = true; grp.add(m);
   }
   return grp.children.length ? grp : null;
+}
+
+// ---- tidal wetland layer: mangrove + herbaceous wetland (ESA WorldCover) and the zone whose water signal differs between high and low tide (Sentinel-2 MNDWI) ----
+let wetTex = null;
+export function wetOverlay(src) {
+  if (!wetI) return null;
+  if (!wetTex) { const c = document.createElement('canvas'); c.width = wetI.w; c.height = wetI.h; c.getContext('2d').drawImage(wetI.bmp, 0, 0); wetTex = new THREE.CanvasTexture(c); wetTex.colorSpace = THREE.SRGBColorSpace; wetTex.anisotropy = 4; wetTex.wrapS = wetTex.wrapT = THREE.ClampToEdgeWrapping; wetTex.magFilter = THREE.NearestFilter; }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', src.attributes.position); if (src.attributes.normal) geo.setAttribute('normal', src.attributes.normal); geo.setIndex(src.index);
+  const p = src.attributes.position, uv = new Float32Array(p.count * 2), cx = src.userData.cx ?? 0, cy = src.userData.cy ?? 0;
+  for (let k = 0; k < p.count; k++) { uv[k * 2] = (cx + p.getX(k) - GX0) / (wetI.w * 10); uv[k * 2 + 1] = 1 - (cy + p.getZ(k) - GY0) / (wetI.h * 10); }
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({map: wetTex, transparent: true, alphaTest: 0.05, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6}));
+  m.renderOrder = 3; return m;
 }
