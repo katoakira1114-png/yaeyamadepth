@@ -6,7 +6,7 @@ import {OrbitControls} from './lib/OrbitControls.js';
 
 const R_IN = 1500, ST_IN = 10, R_OUT = 6000, ST_OUT = 40;
 let A = null, root, renderer, scene, cam, ctl, ray = new THREE.Raycaster();
-let drapes = [], L = null, opt = {drape: true, land: true, bot: 0, bld: true, port: true, lines: true, trees: true}, bldMesh = null, portMesh = null, lineMesh = null, riverM = null, treeM = null, brgM = null, estM = null, furM = null;
+let drapes = [], L = null, opt = {drape: true, land: true, bot: 0, bld: true, port: true, lines: true, trees: true}, bldMesh = null, portMesh = null, lineMesh = null, riverM = null, treeM = null, brgM = null, strM = null, estM = null, furM = null;
 let center = null, ve = 5, terrain = [], water, me, meLine, trackLine = null, marks = null, building = false, follow = true, needs = false;
 const $ = id => document.getElementById(id);
 
@@ -140,7 +140,7 @@ function grid(R, step, hole) {
     const k = j * n + i, x = -R + i * step, z = -R + j * step, s = A.sampleSync(center.gx + x, center.gy + z);
     let y, r, g, b;
     if (!s) { y = -250; r = g = b = 30; }
-    else if (s.d === A.STRUCTURE) { y = 3; r = g = b = 160; }
+    else if (s.d === A.STRUCTURE) { y = -1.5; r = 150; g = 160; b = 150; }
     else if (s.d === A.LAND) { y = s.elev; const t = Math.min(s.elev / 200, 1); r = 228 - 40 * t; g = 216 - 46 * t; b = 180 - 50 * t;
       if (L && opt.land) { const c = L.landColor(center.gx + x, center.gy + z); if (c) { r = c[0]; g = c[1]; b = c[2]; } } }
     else { y = -s.d; const q = Math.min(Math.round(s.d * 10), 640) * 3; r = LUT[q]; g = LUT[q + 1]; b = LUT[q + 2];
@@ -188,8 +188,8 @@ function addDrapes() {
   for (const t of terrain) for (const d of L.photoOverlays(t.geometry, center.gx, center.gy)) { drapes.push(d); scene.add(d); }
 }
 function dropExtras() {
-  for (const m0 of [bldMesh, portMesh, lineMesh, riverM, treeM, brgM, estM, furM]) if (m0) { scene.remove(m0); m0.traverse(m => { if (!m.geometry) return; m.geometry.dispose(); for (const mt of [].concat(m.material)) { if (mt !== undefined && mt.map && m !== bldMesh) mt.map.dispose(); mt.dispose(); } }); }
-  bldMesh = portMesh = lineMesh = riverM = treeM = brgM = estM = furM = null;
+  for (const m0 of [bldMesh, portMesh, lineMesh, riverM, treeM, brgM, strM, estM, furM]) if (m0) { scene.remove(m0); m0.traverse(m => { if (!m.geometry) return; m.geometry.dispose(); for (const mt of [].concat(m.material)) { if (mt !== undefined && mt.map && m !== bldMesh) mt.map.dispose(); mt.dispose(); } }); }
+  bldMesh = portMesh = lineMesh = riverM = treeM = brgM = strM = estM = furM = null;
 }
 function buildExtras() {
   dropExtras(); if (!L) return;
@@ -198,9 +198,9 @@ function buildExtras() {
     riverM = L.riverMesh(center.gx, center.gy, 3500, ve, (x, z) => { const s = A.sampleSync(center.gx + x, center.gy + z); return !s ? 0 : s.d === A.LAND ? s.elev : 0; }); if (riverM) scene.add(riverM); }
   if (opt.lines) { furM = L.furniture(center.gx, center.gy, 2500, ve, (x, z) => { const s = A.sampleSync(center.gx + x, center.gy + z); return !s ? 0 : s.d === A.LAND ? s.elev : 0; }); if (furM) scene.add(furM); }
   if (opt.lines) { estM = L.estuary(center.gx, center.gy, 3500, ve, (x, z) => { const s = A.sampleSync(center.gx + x, center.gy + z); return !s ? 0 : s.d === A.LAND ? s.elev : 0; }); if (estM) scene.add(estM); }
-  if (opt.lines) { brgM = L.bridges(center.gx, center.gy, 3500, ve, (x, z) => { const s = A.sampleSync(center.gx + x, center.gy + z); return !s ? 0 : s.d === A.LAND ? s.elev : 0; }); if (brgM) scene.add(brgM); }
+  if (opt.lines) { brgM = L.bridges(center.gx, center.gy, 3500, ve, (x, z) => { const s = A.sampleSync(center.gx + x, center.gy + z); return !s ? 0 : s.d === A.LAND ? s.elev : 0; }); if (brgM) scene.add(brgM); strM = L.structures(center.gx, center.gy, 3500, ve); if (strM) scene.add(strM); }
   if (opt.trees) { treeM = L.trees(center.gx, center.gy, 3000, ve, (x, z) => { const s = A.sampleSync(center.gx + x, center.gy + z); return !s || s.d !== A.LAND ? -1 : s.elev; }); if (treeM) scene.add(treeM); }
-  if (opt.port) { portMesh = L.portPatch(center.gx, center.gy, R_OUT, ve, (x, z) => { const s = A.sampleSync(center.gx + x, center.gy + z); return !s ? 0 : s.d === A.LAND ? s.elev : s.d === A.STRUCTURE ? 3 : 0; }); if (portMesh) scene.add(portMesh); }
+  if (opt.port) { portMesh = L.portPatch(center.gx, center.gy, R_OUT, ve, (x, z) => { const s = A.sampleSync(center.gx + x, center.gy + z); return !s ? 0 : s.d === A.LAND ? s.elev : s.d === A.STRUCTURE ? -1.5 : 0; }); if (portMesh) scene.add(portMesh); }
 }
 function recolor() {
   // vertex colours depend on the options; recompute them without rebuilding the geometry

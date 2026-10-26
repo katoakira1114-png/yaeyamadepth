@@ -5,7 +5,7 @@ import * as THREE from './lib/three.module.min.js';
 const GX0 = 67340, GY0 = 5940, TW = 2048, TH = 2197, ST = 20;        // texture origin in grid metres, 20 m per pixel
 const PORT = {gx: 76405.97, gy: 33019.82, w: 4126.2, h: 3619.5};     // harbour photo (GSI) extent in grid metres
 let land = null, ben = null, benV = null;
-let phIdx = null, wetI = null, furn = null, est = null, brg = null, treeImg = null, A = null, drape = null, tex = null, bot = null, sat = null, bld = null, portImg = null, ready = null;
+let phIdx = null, wetI = null, furn = null, est = null, brg = null, strc = null, treeImg = null, A = null, drape = null, tex = null, bot = null, sat = null, bld = null, portImg = null, ready = null;
 const triCache = new Map(), wetCache = new Map();
 
 async function img(name) {
@@ -27,6 +27,7 @@ export function init(api) {
     try { furn = JSON.parse(await (await A.getData('data/v3/furn.json')).text()); } catch (e) { furn = null; }
     try { est = JSON.parse(await (await A.getData('data/v3/estuary.json')).text()); } catch (e) { est = null; }
     try { brg = JSON.parse(await (await A.getData('data/v3/bridges.json')).text()); } catch (e) { brg = null; }
+    try { strc = JSON.parse(await (await A.getData('data/v3/structs.json')).text()); } catch (e) { strc = null; }
     try { treeImg = await img('trees.webp'); } catch (e) { treeImg = null; }
     try { benV = await loadBenVec(A); } catch (e) { benV = null; }
     try { land = JSON.parse(await (await A.getData('data/v3/land.json')).text()); } catch (e) { land = null; }
@@ -86,6 +87,7 @@ export function buildings(cx, cy, R, ve) {
     }
     // footprints standing on structure/sea cells are breakwaters, piers and quays: low plain slabs, no windows
     let wet = wetCache.get(n); if (wet === undefined) { const sm = A.sampleSync(gx + (b[2][0] || 0) / 20, gy + (b[2][1] || 0) / 20); wet = !!sm && sm.d !== A.LAND; wetCache.set(n, wet); }
+    if (wet) continue;
     const base = b[4] / 10 * ve, y0 = base - 1, y1 = base + (wet ? Math.min(b[3], 20) : b[3]) / 10 * bs, rgb = wet ? 0xa8a49a : b[5], floors = Math.max(1, b[3] / 10 / 3.2);
     const WT = wet ? RP : W;
     const r = (rgb >> 16 & 255) / 255, g = (rgb >> 8 & 255) / 255, bl = (rgb & 255) / 255, k = 0.85;
@@ -303,6 +305,38 @@ export function bridges(cx, cy, R, ve, height) {
   if (!idx.length) return null;
   const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
   return new THREE.Mesh(g, new THREE.MeshLambertMaterial({color: 0xb9b6ac, side: THREE.DoubleSide}));
+}
+
+// ---- breakwaters, piers and quays (OpenSeaMap/OSM): plain concrete bodies standing on the natural seabed ----
+export function structures(cx, cy, R, ve) {
+  if (!strc) return null;
+  const pos = [], idx = [], top = 2.2 * ve, bot = -6 * ve;
+  for (const [kind, w10, o] of strc) {
+    const n = o.length / 2, p = [];
+    for (let i = 0; i < n; i++) p.push(GX0 + o[2 * i] / 10 - cx, GY0 + o[2 * i + 1] / 10 - cy);
+    if (!p.some((v, i) => i % 2 === 0 && Math.abs(v) < R && Math.abs(p[i + 1]) < R)) continue;
+    const base = pos.length / 3;
+    if (kind === 0) {
+      const hw = w10 / 20;
+      for (let i = 0; i < n; i++) {
+        const a = Math.max(i - 1, 0), b = Math.min(i + 1, n - 1);
+        let dx = p[2 * b] - p[2 * a], dz = p[2 * b + 1] - p[2 * a + 1]; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+        const x = p[2 * i], z = p[2 * i + 1], lx = x - dz * hw, lz = z + dx * hw, rx = x + dz * hw, rz = z - dx * hw;
+        pos.push(lx, top, lz, rx, top, rz, lx, bot, lz, rx, bot, rz);
+        if (i) { const q = base + 4 * (i - 1), r = q + 4;
+          idx.push(q, q + 1, r, q + 1, r + 1, r, q + 2, r + 2, q + 3, q + 3, r + 2, r + 3, q, r, q + 2, r, r + 2, q + 2, q + 1, q + 3, r + 1, r + 1, q + 3, r + 3); }
+      }
+    } else {
+      const v = []; for (let i = 0; i < n; i++) v.push(new THREE.Vector2(p[2 * i], p[2 * i + 1]));
+      const tri = THREE.ShapeUtils.triangulateShape(v, []);
+      for (let i = 0; i < n; i++) pos.push(v[i].x, top, v[i].y, v[i].x, bot, v[i].y);
+      for (const t of tri) idx.push(base + 2 * t[0], base + 2 * t[1], base + 2 * t[2]);
+      for (let i = 0; i < n; i++) { const j = (i + 1) % n, a = base + 2 * i, b = base + 2 * j; idx.push(a, a + 1, b, b, a + 1, b + 1); }
+    }
+  }
+  if (!idx.length) return null;
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+  return new THREE.Mesh(g, new THREE.MeshLambertMaterial({color: 0xb4b0a6, side: THREE.DoubleSide}));
 }
 
 // ---- turbid estuary water (Sentinel-2 MNDWI) that the land mask treats as land: flat fill just above the ground ----
