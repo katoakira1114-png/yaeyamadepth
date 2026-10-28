@@ -20,7 +20,7 @@
   const root = document.createElement('div');
   root.id = 'cap'; root.hidden = true;
   root.innerHTML = `<video id="capv" playsinline muted autoplay></video>
-<div id="capbar"><div id="capstat">準備中…</div>
+<div id="capbar"><div id="capstat">準備中…</div><div id="capmsg" style="font-size:13px;color:#ffe08a;white-space:pre-line"></div>
 <div class="row"><select id="capres" class="fld" style="width:auto"><option value="2160">4K</option><option value="1080">1080p</option></select>
 <button class="pri" id="capgo">● 記録開始</button><button id="capclose">閉じる</button></div>
 <div class="row" id="capsendrow" hidden><select id="capsel" class="fld" style="width:auto;max-width:60%"></select><button id="capsend">PCに送る</button></div>
@@ -39,6 +39,7 @@
   const stamp = d => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
   const f = (v, k = 4) => v == null || Number.isNaN(v) ? '' : (+v).toFixed(k);
   const say = t => { $('capstat').textContent = t; };
+  const note = t => { $('capmsg').textContent = t; }; // 保存・送信の知らせ（毎秒の状態表示で消えないよう別の行）
 
   // ---------- ファイル書き出し（アプリ: 追記で直接保存、ブラウザ: メモリに溜めて最後に保存）----------
   let q = Promise.resolve(), dir = null, dirKind = null;
@@ -222,13 +223,21 @@
     flush(); put('meta.json', JSON.stringify(S.meta, null, 1));
     $('capgo').textContent = '● 記録開始'; $('capgo').classList.remove('on'); $('capres').disabled = false;
     if (app) {
-      say('保存しています…'); await q;
-      say((S.err ? '⚠ 保存中にエラーがありました: ' + S.err + '\n' : '') + `保存しました: 端末の ${dirKind === 'DOCUMENTS' ? 'Documents' : 'Android/data/jp.yaeyama.depthmap/files'}/${dir}/\n（video.${S.ext}, sensors.csv, gps.csv, frames.csv, meta.json）「PCに送る」→「ドライブ」でモバイル通信のまま PC に届けられます（USBでもOK）。`);
-      fillRecs();
-    } else { saveWeb(); say('ファイルを保存しました（ダウンロードフォルダ）。'); }
+      note('保存しています…'); await q;
+      note((S.err ? '⚠ 保存中にエラーがありました: ' + S.err + '\n' : '') + `保存しました: 端末の ${dirKind === 'DOCUMENTS' ? 'Documents' : 'Android/data/jp.yaeyama.depthmap/files'}/${dir}/`);
+      await fillRecs();
+      if (DRIVE) send(); // 撮り終えたら自動でドライブへ
+    } else { saveWeb(); note('ファイルを保存しました（ダウンロードフォルダ）。'); }
   }
 
-  // ---------- PCへ送る（Android の共有。Quick Share で Windows へ、または Google ドライブへ）----------
+  // ---------- PCへ送る ----------
+  // 新しいAPK（DriveUpload あり）: Google ドライブの yaeyama_capture へ直接アップロード（モバイル通信可、PCの「ドライブ（パソコン版）」に届く）
+  // 古いAPK: Android の共有画面で送る
+  const DRIVE = app && window.Capacitor.isPluginAvailable && window.Capacitor.isPluginAvailable('DriveUpload') ? P.DriveUpload : null;
+  if (DRIVE) {
+    $('capsend').textContent = 'ドライブに送る';
+    DRIVE.addListener('progress', d => note(`ドライブへ送信中 ${d.done}/${d.of}: ${d.file}\n${(d.sent / 1e6).toFixed(1)} / ${(d.total / 1e6).toFixed(1)} MB（アプリを閉じないでください）`));
+  }
   async function listRecs() {
     const out = [];
     for (const kind of ['DOCUMENTS', 'EXTERNAL']) {
@@ -242,17 +251,30 @@
     sel.innerHTML = recs.map(r => `<option value="${r.kind}|${r.name}">${r.name.replace(/^(\d{4})(\d\d)(\d\d)_(\d\d)(\d\d)(\d\d)$/, '$2/$3 $4:$5')}</option>`).join('');
     $('capsendrow').hidden = !recs.length;
   }
+  let sending = false;
   async function send() {
+    if (sending) return;
     const [kind, name] = $('capsel').value.split('|'), path = 'yaeyama_capture/' + name;
+    if (DRIVE) {
+      sending = true; $('capsend').disabled = true;
+      try {
+        note('Google の許可を確認しています…');
+        const {token} = await DRIVE.authorize();
+        note('ドライブへ送り始めます…');
+        const r = await DRIVE.upload({token, path, directory: kind});
+        note(`ドライブに送りました（${r.uploaded}ファイル${r.skipped ? '、送信済み' + r.skipped + 'は省略' : ''}）。PCの マイドライブ\\yaeyama_capture に届きます。`);
+      } catch (e) { note('⚠ 送れませんでした: ' + (e.message || e) + '\n電波の良い所で「ドライブに送る」を押すと、続きから送り直します。'); }
+      finally { sending = false; $('capsend').disabled = false; }
+      return;
+    }
     const files = (await P.Filesystem.readdir({path, directory: kind})).files.filter(f => f.type === 'file');
     const uris = [];
     for (const f of files) uris.push((await P.Filesystem.getUri({path: path + '/' + f.name, directory: kind})).uri);
-    const mb = files.reduce((a, f) => a + (f.size || 0), 0) / 1e6;
-    say(`送り先を選んでください（${files.length}ファイル、約${Math.round(mb)}MB）。\nモバイル通信なら「ドライブ」を選び、フォルダ yaeyama_capture に保存。\n（PCの Google ドライブ（パソコン版）に自動で届きます。近くにPCがあれば Quick Share でも可）`);
+    note('送り先で「ドライブ」を選び、フォルダ yaeyama_capture に保存してください。');
     try { await P.Share.share({title: '撮影 ' + name, files: uris}); }
-    catch (e) { if (!/cancel/i.test(e.message || '')) say('送れませんでした: ' + (e.message || e)); }
+    catch (e) { if (!/cancel/i.test(e.message || '')) note('送れませんでした: ' + (e.message || e)); }
   }
-  $('capsend').onclick = () => { send().catch(e => say('送れませんでした: ' + (e.message || e))); };
+  $('capsend').onclick = () => { send().catch(e => note('送れませんでした: ' + (e.message || e))); };
 
   $('capgo').onclick = () => { if (!S) return; (S.rec ? stop() : start()).catch(e => say('エラー: ' + (e.message || e))); };
   $('capclose').onclick = () => { close(); };
