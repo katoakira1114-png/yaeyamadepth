@@ -2,7 +2,7 @@
 """Write files.json (path -> sha1) for every web file. Run before each push; the in-app update button diffs against it."""
 import hashlib, json, os, time
 ROOT = os.path.dirname(os.path.abspath(__file__))
-TOP = ['index.html', 'app.js', 'extras.js', 'view3d.js', 'layers3d.js', 'native.js', 'manifest.webmanifest',
+TOP = ['index.html', 'app.js', 'extras.js', 'capture.js', 'view3d.js', 'layers3d.js', 'native.js', 'manifest.webmanifest',
        'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']
 files = {}
 def add(rel):
