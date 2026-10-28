@@ -23,6 +23,7 @@
 <div id="capbar"><div id="capstat">準備中…</div>
 <div class="row"><select id="capres" class="fld" style="width:auto"><option value="2160">4K</option><option value="1080">1080p</option></select>
 <button class="pri" id="capgo">● 記録開始</button><button id="capclose">閉じる</button></div>
+<div class="row" id="capsendrow" hidden><select id="capsel" class="fld" style="width:auto;max-width:60%"></select><button id="capsend">PCに送る</button></div>
 <small style="color:#9fb0d8">スマホは横向きで、建物に向けて斜め前方を写しながら、ゆっくり歩いてください。1ブロック一周して始点に戻ると、ずれの計算がしやすくなります。</small></div>`;
   document.body.appendChild(root);
 
@@ -58,7 +59,7 @@
   function put(name, data) { // data: string（UTF-8）か Blob
     if (!app) { (web[name] = web[name] || []).push(data); return; }
     enq(async () => {
-      const path = dir + '/' + name;
+      const path = dir + '/' + S.name + '_' + name; // 送ったあと1か所に混ざっても区別できるよう、ファイル名にも日時を付ける
       if (typeof data === 'string') await P.Filesystem.appendFile({path, directory: dirKind, data, encoding: 'utf8'});
       else await P.Filesystem.appendFile({path, directory: dirKind, data: await b64(data)});
     });
@@ -173,7 +174,7 @@
     gpsStart(); genericSensors(); frameLoop();
     window.addEventListener('deviceorientationabsolute', onOri); window.addEventListener('deviceorientation', onOri); window.addEventListener('devicemotion', onMotion);
     try { S.wake = await navigator.wakeLock.request('screen'); } catch (e) {}
-    S.tick = setInterval(status, 1000); status();
+    S.tick = setInterval(status, 1000); status(); fillRecs();
   }
   async function close() {
     if (S && S.rec) { if (!confirm('記録を終了して閉じますか？')) return; await stop(); }
@@ -222,9 +223,36 @@
     $('capgo').textContent = '● 記録開始'; $('capgo').classList.remove('on'); $('capres').disabled = false;
     if (app) {
       say('保存しています…'); await q;
-      say((S.err ? '⚠ 保存中にエラーがありました: ' + S.err + '\n' : '') + `保存しました: 端末の ${dirKind === 'DOCUMENTS' ? 'Documents' : 'Android/data/jp.yaeyama.depthmap/files'}/${dir}/\n（video.${S.ext}, sensors.csv, gps.csv, frames.csv, meta.json）PCにUSBでつないで取り出してください。`);
+      say((S.err ? '⚠ 保存中にエラーがありました: ' + S.err + '\n' : '') + `保存しました: 端末の ${dirKind === 'DOCUMENTS' ? 'Documents' : 'Android/data/jp.yaeyama.depthmap/files'}/${dir}/\n（video.${S.ext}, sensors.csv, gps.csv, frames.csv, meta.json）「PCに送る」→「ドライブ」でモバイル通信のまま PC に届けられます（USBでもOK）。`);
+      fillRecs();
     } else { saveWeb(); say('ファイルを保存しました（ダウンロードフォルダ）。'); }
   }
+
+  // ---------- PCへ送る（Android の共有。Quick Share で Windows へ、または Google ドライブへ）----------
+  async function listRecs() {
+    const out = [];
+    for (const kind of ['DOCUMENTS', 'EXTERNAL']) {
+      try { (await P.Filesystem.readdir({path: 'yaeyama_capture', directory: kind})).files.forEach(f => { if (f.type === 'directory') out.push({name: f.name, kind}); }); } catch (e) {}
+    }
+    return out.sort((a, b) => b.name.localeCompare(a.name));
+  }
+  async function fillRecs() {
+    if (!app) return;
+    const recs = await listRecs(), sel = $('capsel');
+    sel.innerHTML = recs.map(r => `<option value="${r.kind}|${r.name}">${r.name.replace(/^(\d{4})(\d\d)(\d\d)_(\d\d)(\d\d)(\d\d)$/, '$2/$3 $4:$5')}</option>`).join('');
+    $('capsendrow').hidden = !recs.length;
+  }
+  async function send() {
+    const [kind, name] = $('capsel').value.split('|'), path = 'yaeyama_capture/' + name;
+    const files = (await P.Filesystem.readdir({path, directory: kind})).files.filter(f => f.type === 'file');
+    const uris = [];
+    for (const f of files) uris.push((await P.Filesystem.getUri({path: path + '/' + f.name, directory: kind})).uri);
+    const mb = files.reduce((a, f) => a + (f.size || 0), 0) / 1e6;
+    say(`送り先を選んでください（${files.length}ファイル、約${Math.round(mb)}MB）。\nモバイル通信なら「ドライブ」を選び、フォルダ yaeyama_capture に保存。\n（PCの Google ドライブ（パソコン版）に自動で届きます。近くにPCがあれば Quick Share でも可）`);
+    try { await P.Share.share({title: '撮影 ' + name, files: uris}); }
+    catch (e) { if (!/cancel/i.test(e.message || '')) say('送れませんでした: ' + (e.message || e)); }
+  }
+  $('capsend').onclick = () => { send().catch(e => say('送れませんでした: ' + (e.message || e))); };
 
   $('capgo').onclick = () => { if (!S) return; (S.rec ? stop() : start()).catch(e => say('エラー: ' + (e.message || e))); };
   $('capclose').onclick = () => { close(); };
