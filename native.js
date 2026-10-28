@@ -41,6 +41,8 @@ const NATIVE = (() => {
   }
 
   P.App.addListener('backButton', () => {
+    const cap = document.getElementById('cap');
+    if (cap && !cap.hidden) { document.getElementById('capclose').click(); return; }
     const open = [...document.querySelectorAll('.sheet')].filter(s => !s.hidden);
     if (open.length) { open[open.length - 1].hidden = true; return; }
     const v3 = document.getElementById('v3');
