@@ -160,7 +160,7 @@
   function status() {
     if (!S) return;
     const fx = S.lastFix, gpsTxt = fx ? `GPS 誤差 約${Math.round(fx.acc)}m（${Math.round((performance.now() - fx.t) / 1000)}秒前）` : 'GPS 待ち';
-    if (!S.rec) { say(`${gpsTxt}\n映像 ${S.vw || '?'}×${S.vh || '?'}　「記録開始」で動画とセンサーの記録を始めます。${app ? '' : '\n（ブラウザ版: 終わると数個のファイルを保存します）'}`); return; }
+    if (!S.rec) { say(`${gpsTxt}\n映像 ${S.vw || '?'}×${S.vh || '?'}　「記録開始」で動画とセンサーの記録を始めます。${app ? '' : '\n（ブラウザ版: 終わると数個のファイルを保存します）'}${S.lastSum ? '\n' + S.lastSum : ''}`); return; }
     const sec = Math.round((performance.now() - S.t0) / 1000);
     if (NSENS && S.meta.native_sensors) NSENS.status().then(r => { sens.native = r.rows; }).catch(() => {});
     say(`● 記録中 ${Math.floor(sec / 60)}:${pad(sec % 60)}　動画 ${(S.bytes / 1e6).toFixed(1)}MB\n${gpsTxt}\nセンサー 向き${sens.ori} ジャイロ${sens.gyro} 四元数${sens.q} 磁気${sens.mag} GPS${sens.gps}${NSENS ? ' ネイティブ' + (sens.native || 0) : ''}${S.err ? '\n⚠ 保存エラー: ' + S.err : ''}`);
@@ -230,6 +230,8 @@
     await new Promise(r => { S.mr.onstop = r; S.mr.stop(); });
     if (NSENS && S.meta.native_sensors) { try { const r = await NSENS.stop(); S.meta.native_sensors.rows = r.rows; sens.native = r.rows; } catch (e) {} }
     S.meta.rec_stop_t_ms = performance.now(); S.meta.video_bytes = S.bytes; S.meta.counts = {...sens};
+    // 記録中の表示が止まる端末があるので、終わったあとに何が取れたかを必ず出す
+    S.lastSum = `前回の記録: ${Math.round((S.meta.rec_stop_t_ms - S.t0) / 1000)}秒　動画 ${(S.bytes / 1e6).toFixed(1)}MB　GPS ${sens.gps}　ネイティブ ${sens.native}（向き${sens.ori} ジャイロ${sens.gyro} 四元数${sens.q} 磁気${sens.mag}）`;
     flush(); put('meta.json', JSON.stringify(S.meta, null, 1));
     $('capgo').textContent = '● 記録開始'; $('capgo').classList.remove('on'); $('capres').disabled = false;
     if (app) {
