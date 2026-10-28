@@ -74,7 +74,7 @@
   }
 
   // ---------- センサー ----------
-  const sens = {ori: 0, gyro: 0, q: 0, mag: 0, gps: 0};
+  const sens = {ori: 0, gyro: 0, q: 0, mag: 0, gps: 0, native: 0};
   let buf = [], gbuf = [], fbuf = [];
   function onOri(e) { if (!S || !S.rec) return; sens.ori++; buf.push(`${f(e.timeStamp, 2)},ori${e.absolute ? '_abs' : ''},${f(e.alpha)},${f(e.beta)},${f(e.gamma)},`); }
   function onMotion(e) {
@@ -162,7 +162,8 @@
     const fx = S.lastFix, gpsTxt = fx ? `GPS 誤差 約${Math.round(fx.acc)}m（${Math.round((performance.now() - fx.t) / 1000)}秒前）` : 'GPS 待ち';
     if (!S.rec) { say(`${gpsTxt}\n映像 ${S.vw || '?'}×${S.vh || '?'}　「記録開始」で動画とセンサーの記録を始めます。${app ? '' : '\n（ブラウザ版: 終わると数個のファイルを保存します）'}`); return; }
     const sec = Math.round((performance.now() - S.t0) / 1000);
-    say(`● 記録中 ${Math.floor(sec / 60)}:${pad(sec % 60)}　動画 ${(S.bytes / 1e6).toFixed(1)}MB\n${gpsTxt}\nセンサー 向き${sens.ori} ジャイロ${sens.gyro} 四元数${sens.q} 磁気${sens.mag} GPS${sens.gps}${S.err ? '\n⚠ 保存エラー: ' + S.err : ''}`);
+    if (NSENS && S.meta.native_sensors) NSENS.status().then(r => { sens.native = r.rows; }).catch(() => {});
+    say(`● 記録中 ${Math.floor(sec / 60)}:${pad(sec % 60)}　動画 ${(S.bytes / 1e6).toFixed(1)}MB\n${gpsTxt}\nセンサー 向き${sens.ori} ジャイロ${sens.gyro} 四元数${sens.q} 磁気${sens.mag} GPS${sens.gps}${NSENS ? ' ネイティブ' + (sens.native || 0) : ''}${S.err ? '\n⚠ 保存エラー: ' + S.err : ''}`);
   }
 
   async function open() {
@@ -211,6 +212,14 @@
     S.mr.onstart = () => { S.meta.rec_start_t_ms = performance.now(); };
     S.mr.ondataavailable = e => { if (e.data && e.data.size) { S.bytes += e.data.size; put('video.' + S.ext, e.data); } };
     S.mr.start(1000);
+    if (NSENS) { // WebView のセンサーイベントは届かない端末があるので、アプリではネイティブでも記録する
+      const b = performance.now();
+      try {
+        const r = await NSENS.start({path: dir + '/' + S.name + '_sensors_native.csv', directory: dirKind});
+        S.meta.native_sensors = {...r, perf_before: b, perf_after: performance.now(),
+          notes: 't_ns は elapsedRealtimeNanos（センサー時刻）。perf_ms ≈ (t_ns - elapsed_ns)/1e6 + (perf_before+perf_after)/2。rotvec/gamerot は四元数 x,y,z,w（端末→東北上）、gyro_rads は rad/s、acc_mps2 は m/s²。'};
+      } catch (e) { S.err = 'センサー記録: ' + (e.message || e); }
+    }
     S.flushT = setInterval(flush, 3000);
     S.oriL = () => buf.push(`${f(performance.now(), 2)},screen_angle,${screen.orientation ? screen.orientation.angle : window.orientation},,,`);
     window.addEventListener('orientationchange', S.oriL); S.oriL();
@@ -219,6 +228,7 @@
   async function stop() {
     S.rec = false; clearInterval(S.flushT); window.removeEventListener('orientationchange', S.oriL);
     await new Promise(r => { S.mr.onstop = r; S.mr.stop(); });
+    if (NSENS && S.meta.native_sensors) { try { const r = await NSENS.stop(); S.meta.native_sensors.rows = r.rows; sens.native = r.rows; } catch (e) {} }
     S.meta.rec_stop_t_ms = performance.now(); S.meta.video_bytes = S.bytes; S.meta.counts = {...sens};
     flush(); put('meta.json', JSON.stringify(S.meta, null, 1));
     $('capgo').textContent = '● 記録開始'; $('capgo').classList.remove('on'); $('capres').disabled = false;
@@ -233,6 +243,7 @@
   // ---------- PCへ送る ----------
   // 新しいAPK（DriveUpload あり）: Google ドライブの yaeyama_capture へ直接アップロード（モバイル通信可、PCの「ドライブ（パソコン版）」に届く）
   // 古いAPK: Android の共有画面で送る
+  const NSENS = app && window.Capacitor.isPluginAvailable && window.Capacitor.isPluginAvailable('SensorLog') ? P.SensorLog : null;
   const DRIVE = app && window.Capacitor.isPluginAvailable && window.Capacitor.isPluginAvailable('DriveUpload') ? P.DriveUpload : null;
   if (DRIVE) {
     $('capsend').textContent = 'ドライブに送る';
