@@ -3,10 +3,11 @@
 // データは data/cap/index.json と data/cap/<id>/ の各ファイル（暗号化時は .enc、app.js の getData で復号）。
 // シーン座標: x 東, y 北, z 上 (m)。UTM51N の E = x + origin[0], N = y + origin[1]。glb は y-up: glb (x, y, z) = scene (x, z, -y)。
 const W3 = (() => {
-let IDX = null, idxTried = false;
+let IDX = null, idxTried = false, PLAIN = false; // PLAIN: the 3D files are not encrypted (no .enc), even when the depth data is
 async function loadIndex(){
   if (idxTried) return IDX; idxTried = true;
   try { IDX = JSON.parse(await (await getData('data/cap/index.json', {cache: 'no-cache'})).text()); } catch (e) { IDX = null; }
+  if (!IDX && ENC) try { const r = await fetch('data/cap/index.json', {cache: 'no-cache'}); if (r.ok) { IDX = await r.json(); PLAIN = true; } } catch (e) { IDX = null; }
   if (IDX) { for (const s of IDX.scenes) s.g = s.cams.map(([x, y]) => [x + s.origin[0] - META.x0, META.y0 - (y + s.origin[1])]); requestDraw(); }
   return IDX;
 }
@@ -350,7 +351,11 @@ canvas.addEventListener('wheel', e => { e.preventDefault(); zoom(Math.exp(e.delt
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 
 }
-async function fetchFile(s, name){ return new Uint8Array(await (await getData(`data/cap/${s.id}/${name}`)).arrayBuffer()); }
+async function fetchFile(s, name){
+  const p = `data/cap/${s.id}/${name}`;
+  if (!PLAIN) return new Uint8Array(await (await getData(p)).arrayBuffer());
+  const r = await fetch(p); if (!r.ok) throw new Error(r.status); return new Uint8Array(await r.arrayBuffer());
+}
 async function loadMore(s, upto){
   if (busy) return; busy = true; $('more').hidden = true;
   try {
