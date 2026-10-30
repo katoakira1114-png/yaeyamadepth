@@ -23,7 +23,7 @@ import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
-// 撮影中の向き・ジャイロ・加速度・磁気を Android の SensorManager から直接ファイルへ書く。
+// 撮影中の向き・ジャイロ・加速度・磁気・気圧を Android の SensorManager から直接ファイルへ書く。
 // WebView の deviceorientation / devicemotion は端末によって届かないため（2026-10-28 の試し撮りで0件だった）。
 // 時刻 t_ns は SystemClock.elapsedRealtimeNanos 基準（センサーの event.timestamp と同じ時計）。
 // start() が返す elapsed_ns / epoch_ms と、JS 側で呼び出し前後に取った performance.now() で、動画やGPSの時刻と結びつける。
@@ -54,7 +54,8 @@ public class SensorLogPlugin extends Plugin implements SensorEventListener {
             Handler h = new Handler(thread.getLooper());
             JSObject avail = new JSObject();
             int[] types = {Sensor.TYPE_ROTATION_VECTOR, Sensor.TYPE_GAME_ROTATION_VECTOR, Sensor.TYPE_GYROSCOPE,
-                Sensor.TYPE_ACCELEROMETER, Sensor.TYPE_MAGNETIC_FIELD, Sensor.TYPE_GYROSCOPE_UNCALIBRATED};
+                Sensor.TYPE_ACCELEROMETER, Sensor.TYPE_MAGNETIC_FIELD, Sensor.TYPE_GYROSCOPE_UNCALIBRATED,
+                Sensor.TYPE_PRESSURE};
             for (int t : types) {
                 Sensor s = sm.getDefaultSensor(t);
                 avail.put(name(t), s != null);
@@ -107,6 +108,7 @@ public class SensorLogPlugin extends Plugin implements SensorEventListener {
             case Sensor.TYPE_GYROSCOPE_UNCALIBRATED: return "gyro_uncal_rads";
             case Sensor.TYPE_ACCELEROMETER: return "acc_mps2";
             case Sensor.TYPE_MAGNETIC_FIELD: return "mag_uT";
+            case Sensor.TYPE_PRESSURE: return "pressure_hpa"; // 気圧（坂の登り下りの手がかり、1値のみ）
             default: return "t" + t;
         }
     }
@@ -123,7 +125,7 @@ public class SensorLogPlugin extends Plugin implements SensorEventListener {
             v = new float[]{q[1], q[2], q[3], q[0]};       // x,y,z,w で書く
         }
         try {
-            out.write(String.format(Locale.US, "%d,%s,%.6f,%.6f,%.6f,%s,%d\n", e.timestamp, name(t), v[0], v[1], v[2],
+            out.write(String.format(Locale.US, "%d,%s,%.6f,%.6f,%.6f,%s,%d\n", e.timestamp, name(t), v[0], v.length > 1 ? v[1] : 0f, v.length > 2 ? v[2] : 0f,
                 v.length > 3 ? String.format(Locale.US, "%.6f", v[3]) : d, e.accuracy));
             count++;
         } catch (Exception ignored) { }
