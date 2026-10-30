@@ -17,7 +17,8 @@
 #capbar .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 #capgo.on{background:#c62828;border-color:#ff8a80}
 #capdim{position:fixed;inset:0;background:#000;z-index:21;display:flex;align-items:flex-end;justify-content:center;padding-bottom:40px;color:#556;font-size:14px;text-align:center;white-space:pre-line}
-#capdim[hidden]{display:none}`;
+#capdim[hidden]{display:none}
+#cap.rec video{flex:none;height:28vh}`;
   document.head.appendChild(css);
   const root = document.createElement('div');
   root.id = 'cap'; root.hidden = true;
@@ -182,9 +183,13 @@
     const sec = Math.round((performance.now() - S.t0) / 1000);
     if (NSENS && S.meta.native_sensors) NSENS.status().then(r => { sens.native = r.rows; }).catch(() => {});
     const segTxt = S.seg ? `（${S.seg}本目）` : '', batTxt = S.bat ? `　電池 ${Math.round(S.bat.level * 100)}%` : '';
-    say(`● 記録中 ${Math.floor(sec / 60)}:${pad(sec % 60)}　動画 ${(S.bytes / 1e6).toFixed(0)}MB${segTxt}${batTxt}\n${gpsTxt}\nセンサー 向き${sens.ori} ジャイロ${sens.gyro} 四元数${sens.q} 磁気${sens.mag} GPS${sens.gps}${NSENS ? ' ネイティブ' + (sens.native || 0) : ''}${S.err ? '\n⚠ 保存エラー: ' + S.err : ''}`);
+    say(`● 記録中 ${Math.floor(sec / 60)}:${pad(sec % 60)}　動画 ${(S.bytes / 1e6).toFixed(0)}MB${segTxt}${batTxt}\n${gpsTxt}\nセンサー ${NSENS ? `ネイティブ${sens.native || 0}` : `向き${sens.ori} ジャイロ${sens.gyro} 四元数${sens.q} 磁気${sens.mag}`} GPS${sens.gps}${S.err ? '\n⚠ 保存エラー: ' + S.err : ''}`);
   }
 
+  // Pixel の WebView では4K記録中にタイマーや再描画が止まることがあるので、録画データが届くたびにも表示を更新する。
+  // 記録中はプレビューを小さくして描画の負担を減らす
+  let lastTick = 0;
+  function tick() { const t = performance.now(); if (t - lastTick > 900) { lastTick = t; status(); } }
   async function open() {
     root.hidden = false; say('カメラを起動しています…');
     S = {rec: false, bytes: 0};
@@ -197,7 +202,7 @@
     try { S.wake = await navigator.wakeLock.request('screen'); } catch (e) {}
     try { S.bat = await navigator.getBattery(); } catch (e) {}
     document.addEventListener('visibilitychange', reWake);
-    S.tick = setInterval(status, 1000); status(); fillRecs();
+    S.tick = setInterval(tick, 1000); status(); fillRecs();
   }
   async function reWake() { // 画面ロックが外れることがあるので、戻ってきたら取り直す
     if (S && document.visibilityState === 'visible' && (!S.wake || S.wake.released)) { try { S.wake = await navigator.wakeLock.request('screen'); } catch (e) {} }
@@ -241,7 +246,7 @@
     } else {
       S.mr = new MediaRecorder(S.stream, {mimeType: mime, videoBitsPerSecond: S.rate});
       S.mr.onstart = () => { S.meta.rec_start_t_ms = performance.now(); };
-      S.mr.ondataavailable = e => { if (e.data && e.data.size) { S.bytes += e.data.size; put('video.' + S.ext, e.data); } };
+      S.mr.ondataavailable = e => { if (e.data && e.data.size) { S.bytes += e.data.size; put('video.' + S.ext, e.data); tick(); } };
       S.mr.start(1000);
     }
     if (NSENS) { // WebView のセンサーイベントは届かない端末があるので、アプリではネイティブでも記録する
@@ -255,13 +260,13 @@
     S.flushT = setInterval(flush, 3000);
     S.oriL = () => buf.push(`${f(performance.now(), 2)},screen_angle,${screen.orientation ? screen.orientation.angle : window.orientation},,,`);
     window.addEventListener('orientationchange', S.oriL); S.oriL();
-    $('capgo').textContent = '■ 記録終了'; $('capgo').classList.add('on'); $('capres').disabled = true; $('capmode').disabled = true; status();
+    root.classList.add('rec'); $('capgo').textContent = '■ 記録終了'; $('capgo').classList.add('on'); $('capres').disabled = true; $('capmode').disabled = true; status();
   }
   function newRec() { // 区切り録画の1本（video_001.mp4 …）。開始・終了の時刻は meta.segments と sensors.csv に残す
     const n = ++S.seg, name = `video_${String(n).padStart(3, '0')}.${S.ext}`, seg = {file: S.name + '_' + name};
     const mr = new MediaRecorder(S.stream, {mimeType: S.mime, videoBitsPerSecond: S.rate});
     mr.onstart = () => { seg.start_t_ms = performance.now(); if (n === 1) S.meta.rec_start_t_ms = seg.start_t_ms; buf.push(`${f(seg.start_t_ms, 2)},seg_start,${n},,,`); };
-    mr.ondataavailable = e => { if (e.data && e.data.size) { S.bytes += e.data.size; put(name, e.data); } };
+    mr.ondataavailable = e => { if (e.data && e.data.size) { S.bytes += e.data.size; put(name, e.data); tick(); } };
     mr.addEventListener('stop', () => { seg.stop_t_ms = performance.now(); buf.push(`${f(seg.stop_t_ms, 2)},seg_stop,${n},,,`); });
     S.meta.segments.push(seg); mr.start(1000);
     return mr;
@@ -274,10 +279,10 @@
     // 記録中の表示が止まる端末があるので、終わったあとに何が取れたかを必ず出す
     S.lastSum = `前回の記録: ${Math.round((S.meta.rec_stop_t_ms - S.t0) / 1000)}秒　動画 ${(S.bytes / 1e6).toFixed(1)}MB　GPS ${sens.gps}　ネイティブ ${sens.native}（向き${sens.ori} ジャイロ${sens.gyro} 四元数${sens.q} 磁気${sens.mag}）`;
     flush(); put('meta.json', JSON.stringify(S.meta, null, 1));
-    $('capgo').textContent = '● 記録開始'; $('capgo').classList.remove('on'); $('capres').disabled = false; $('capmode').disabled = false; dim.hidden = true;
+    root.classList.remove('rec'); status(); $('capgo').textContent = '● 記録開始'; $('capgo').classList.remove('on'); $('capres').disabled = false; $('capmode').disabled = false; dim.hidden = true;
     if (app) {
       note('保存しています…'); await q;
-      note((S.err ? '⚠ 保存中にエラーがありました: ' + S.err + '\n' : '') + `保存しました: 端末の ${dirKind === 'DOCUMENTS' ? 'Documents' : 'Android/data/jp.yaeyama.depthmap/files'}/${dir}/`);
+      note((S.err ? '⚠ 保存中にエラーがありました: ' + S.err + '\n' : '') + S.lastSum + `\n保存しました: 端末の ${dirKind === 'DOCUMENTS' ? 'Documents' : 'Android/data/jp.yaeyama.depthmap/files'}/${dir}/`);
       await fillRecs();
       if (DRIVE && S.auto) send(); // 歩きは撮り終えたら自動でドライブへ（海面曳航は帰宅後に手動）
       else if (!S.auto) note($('capmsg').textContent + '\n帰宅後、Wi-Fiにつないでから下の「' + $('capsend').textContent + '」を押してください。');
