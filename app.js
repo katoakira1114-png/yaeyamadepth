@@ -249,6 +249,7 @@ function draw() {
     }
   }
   if (typeof drawOverlays === 'function') drawOverlays();
+  if (typeof W3 === 'object') W3.draw();
   // tapped point
   if (tapPt) { const [sx, sy] = g2s(tapPt[0], tapPt[1]); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 * dpr; ctx.beginPath(); ctx.moveTo(sx - 9 * dpr, sy); ctx.lineTo(sx + 9 * dpr, sy); ctx.moveTo(sx, sy - 9 * dpr); ctx.lineTo(sx, sy + 9 * dpr); ctx.stroke(); }
   // current position
@@ -269,11 +270,15 @@ function drawScale() {
 
 // ---------- input: drag, pinch, wheel, tap ----------
 const ptrs = new Map();
-let gesture = null, follow = true;
+let gesture = null, follow = true, lpTimer = 0;
 cv.addEventListener('pointerdown', e => {
   cv.setPointerCapture(e.pointerId);
   ptrs.set(e.pointerId, [e.clientX * dpr, e.clientY * dpr]);
   gesture = {start: snapshot(), t: performance.now(), moved: false, n: ptrs.size, maxN: Math.max(ptrs.size, gesture ? gesture.maxN : 0)};
+  // long press (one finger, not moved) opens the captured 3D near that point (walk3d.js)
+  clearTimeout(lpTimer);
+  if (ptrs.size === 1 && typeof W3 === 'object') { const g = gesture, sx = e.clientX * dpr, sy = e.clientY * dpr;
+    lpTimer = setTimeout(() => { if (gesture === g && !g.moved && ptrs.size === 1) { g.lp = true; if (navigator.vibrate) navigator.vibrate(25); W3.longPress(sx, sy); } }, 550); }
 });
 function snapshot() {
   const p = [...ptrs.values()], c = p.reduce((a, b) => [a[0] + b[0] / p.length, a[1] + b[1] / p.length], [0, 0]);
@@ -294,11 +299,13 @@ cv.addEventListener('pointermove', e => {
 function endPtr(e) {
   if (!ptrs.has(e.pointerId)) return;
   ptrs.delete(e.pointerId);
-  const wasTap = gesture && !gesture.moved && gesture.maxN === 1 && performance.now() - gesture.t < 500;
+  clearTimeout(lpTimer);
+  const wasTap = gesture && !gesture.moved && !gesture.lp && gesture.maxN === 1 && performance.now() - gesture.t < 500;
   if (wasTap) onTap(e.clientX * dpr, e.clientY * dpr);
   gesture = ptrs.size ? {start: snapshot(), t: performance.now(), moved: true, n: ptrs.size, maxN: gesture.maxN} : null;
 }
 cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', endPtr);
+cv.addEventListener('contextmenu', e => e.preventDefault()); // long press is ours (3D), not the browser menu
 cv.addEventListener('wheel', e => {
   e.preventDefault();
   const sx = e.clientX * dpr, sy = e.clientY * dpr, [gx, gy] = s2g(sx, sy);
@@ -503,5 +510,6 @@ addEventListener('resize', resize);
   startGPS(); setFollow(true);
   checkBanner();
   if (typeof extrasInit === 'function') extrasInit();
+  if (typeof W3 === 'object') W3.loadIndex();
   window.__app = {depthAt, ll2g, g2ll, view, tiles, cacheStatus}; // for testing
 })();
