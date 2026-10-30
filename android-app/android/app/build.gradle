@@ -58,8 +58,9 @@ try {
 def webRoot = file('../../..')
 tasks.register('copyWebAssets', Sync) {
     from(webRoot) {
-        include 'index.html', 'app.js', 'extras.js', 'capture.js', 'view3d.js', 'layers3d.js', 'native.js', 'files.json', 'sw.js', 'manifest.webmanifest'
+        include 'index.html', 'app.js', 'extras.js', 'capture.js', 'walk3d.js', 'view3d.js', 'layers3d.js', 'native.js', 'files.json', 'sw.js', 'manifest.webmanifest'
         include 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'lib/**', 'data/**'
+        exclude 'data/cap/**' // captured 3D is fetched on demand
     }
     into 'src/main/assets/public'
     preserve { include 'cordova.js', 'cordova_plugins.js' }
