@@ -2,7 +2,7 @@
 """Write files.json (path -> sha1) for every web file. Run before each push; the in-app update button diffs against it."""
 import hashlib, json, os, time
 ROOT = os.path.dirname(os.path.abspath(__file__))
-TOP = ['index.html', 'app.js', 'extras.js', 'capture.js', 'view3d.js', 'layers3d.js', 'native.js', 'manifest.webmanifest',
+TOP = ['index.html', 'app.js', 'extras.js', 'capture.js', 'walk3d.js', 'view3d.js', 'layers3d.js', 'native.js', 'manifest.webmanifest',
        'icon-192.png', 'icon-512.png', 'apple-touch-icon.png']
 files = {}
 def add(rel):
@@ -10,6 +10,7 @@ def add(rel):
 for t in TOP: add(t)
 for d in ('lib', 'data'):
     for dp, _, fs in os.walk(os.path.join(ROOT, d)):
+        if os.path.relpath(dp, ROOT).replace(os.sep, '/').startswith('data/cap'): continue  # captured 3D: fetched on demand, not by the update button
         for n in sorted(fs): add(os.path.relpath(os.path.join(dp, n), ROOT).replace(os.sep, '/'))
 old = {}
 try: old = json.load(open(os.path.join(ROOT, 'files.json')))
