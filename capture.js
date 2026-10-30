@@ -15,17 +15,35 @@
 #capbar{padding:10px 12px calc(var(--sb,0px) + 10px);background:rgba(10,20,50,.92);display:flex;flex-direction:column;gap:8px}
 #capstat{font-size:13px;line-height:1.5;color:#dfe8ff;white-space:pre-line}
 #capbar .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-#capgo.on{background:#c62828;border-color:#ff8a80}`;
+#capgo.on{background:#c62828;border-color:#ff8a80}
+#capdim{position:fixed;inset:0;background:#000;z-index:21;display:flex;align-items:flex-end;justify-content:center;padding-bottom:40px;color:#556;font-size:14px;text-align:center;white-space:pre-line}
+#capdim[hidden]{display:none}`;
   document.head.appendChild(css);
   const root = document.createElement('div');
   root.id = 'cap'; root.hidden = true;
   root.innerHTML = `<video id="capv" playsinline muted autoplay></video>
 <div id="capbar"><div id="capstat">準備中…</div><div id="capmsg" style="font-size:13px;color:#ffe08a;white-space:pre-line"></div>
 <div class="row"><select id="capres" class="fld" style="width:auto"><option value="2160">4K</option><option value="1080">1080p</option></select>
-<button class="pri" id="capgo">● 記録開始</button><button id="capclose">閉じる</button></div>
+<select id="capmode" class="fld" style="width:auto"><option value="walk">歩き</option><option value="tow">海面曳航（長時間）</option></select>
+<button class="pri" id="capgo">● 記録開始</button><button id="capclose">閉じる</button><button id="capdimb">画面を暗く</button></div>
 <div class="row" id="capsendrow" hidden><select id="capsel" class="fld" style="width:auto;max-width:60%"></select><button id="capsend">PCに送る</button></div>
-<small style="color:#9fb0d8">スマホは横向きで、建物に向けて斜め前方を写しながら、ゆっくり歩いてください。1ブロック一周して始点に戻ると、ずれの計算がしやすくなります。</small></div>`;
+<small id="caphelp" style="color:#9fb0d8"></small></div>`;
   document.body.appendChild(root);
+  const dim = document.createElement('div');
+  dim.id = 'capdim'; dim.hidden = true; dim.textContent = '記録は続いています\nタップで画面を戻す';
+  document.body.appendChild(dim);
+  dim.onclick = () => { dim.hidden = true; };
+  // 海面曳航: タッパー等に入れて引っぱり、真下（やや斜め）の海底を長時間撮る。
+  // 落ちても失う分が少ないよう動画を5分ごとに別ファイルにし、送信は帰宅後に手動（自動でドライブへは送らない）。
+  const MODES = {
+    walk: {seg: 0, rate4k: 25e6, auto: true, help: 'スマホは横向きで、建物に向けて斜め前方を写しながら、ゆっくり歩いてください。1ブロック一周して始点に戻ると、ずれの計算がしやすくなります。'},
+    tow: {seg: 300e3, rate4k: 16e6, auto: false, help: 'カメラを真下（少し斜め）の海底に向け、隣の列と半分以上重なるよう、まっすぐ往復してください。最初と最後にGPSの画面か時計を2〜3秒写すと時刻合わせが確実になります。動画は5分ごとに分けて保存し、送信は帰宅後にWi-Fiで「ドライブに送る」を押します。記録中は「画面を暗く」で発熱と電池を抑えられます。'}
+  };
+  const mode = () => MODES[$('capmode').value] || MODES.walk;
+  try { const m = localStorage.getItem('capmode'); if (m && MODES[m]) $('capmode').value = m; } catch (e) {}
+  const help = () => { $('caphelp').textContent = mode().help; };
+  help();
+  $('capmode').onchange = () => { try { localStorage.setItem('capmode', $('capmode').value); } catch (e) {} help(); };
 
   const row = $('bTrkClose') && $('bTrkClose').parentNode;
   if (row) {
@@ -163,7 +181,8 @@
     if (!S.rec) { say(`${gpsTxt}\n映像 ${S.vw || '?'}×${S.vh || '?'}　「記録開始」で動画とセンサーの記録を始めます。${app ? '' : '\n（ブラウザ版: 終わると数個のファイルを保存します）'}${S.lastSum ? '\n' + S.lastSum : ''}`); return; }
     const sec = Math.round((performance.now() - S.t0) / 1000);
     if (NSENS && S.meta.native_sensors) NSENS.status().then(r => { sens.native = r.rows; }).catch(() => {});
-    say(`● 記録中 ${Math.floor(sec / 60)}:${pad(sec % 60)}　動画 ${(S.bytes / 1e6).toFixed(1)}MB\n${gpsTxt}\nセンサー 向き${sens.ori} ジャイロ${sens.gyro} 四元数${sens.q} 磁気${sens.mag} GPS${sens.gps}${NSENS ? ' ネイティブ' + (sens.native || 0) : ''}${S.err ? '\n⚠ 保存エラー: ' + S.err : ''}`);
+    const segTxt = S.seg ? `（${S.seg}本目）` : '', batTxt = S.bat ? `　電池 ${Math.round(S.bat.level * 100)}%` : '';
+    say(`● 記録中 ${Math.floor(sec / 60)}:${pad(sec % 60)}　動画 ${(S.bytes / 1e6).toFixed(0)}MB${segTxt}${batTxt}\n${gpsTxt}\nセンサー 向き${sens.ori} ジャイロ${sens.gyro} 四元数${sens.q} 磁気${sens.mag} GPS${sens.gps}${NSENS ? ' ネイティブ' + (sens.native || 0) : ''}${S.err ? '\n⚠ 保存エラー: ' + S.err : ''}`);
   }
 
   async function open() {
@@ -176,7 +195,12 @@
     gpsStart(); genericSensors(); frameLoop();
     window.addEventListener('deviceorientationabsolute', onOri); window.addEventListener('deviceorientation', onOri); window.addEventListener('devicemotion', onMotion);
     try { S.wake = await navigator.wakeLock.request('screen'); } catch (e) {}
+    try { S.bat = await navigator.getBattery(); } catch (e) {}
+    document.addEventListener('visibilitychange', reWake);
     S.tick = setInterval(status, 1000); status(); fillRecs();
+  }
+  async function reWake() { // 画面ロックが外れることがあるので、戻ってきたら取り直す
+    if (S && document.visibilityState === 'visible' && (!S.wake || S.wake.released)) { try { S.wake = await navigator.wakeLock.request('screen'); } catch (e) {} }
   }
   async function close() {
     if (S && S.rec) { if (!confirm('記録を終了して閉じますか？')) return; await stop(); }
@@ -187,6 +211,7 @@
     if (gStop) gStop(); gStop = null;
     extra.splice(0).forEach(s => { try { s.stop(); } catch (e) {} });
     window.removeEventListener('deviceorientationabsolute', onOri); window.removeEventListener('deviceorientation', onOri); window.removeEventListener('devicemotion', onMotion);
+    document.removeEventListener('visibilitychange', reWake); dim.hidden = true;
     $('capv').srcObject = null; S = null; root.hidden = true;
   }
 
@@ -206,12 +231,19 @@
       video: {mime, settings: tr.getSettings(), capabilities: caps, label: tr.label}, screen: {w: screen.width, h: screen.height, angle: screen.orientation ? screen.orientation.angle : window.orientation},
       notes: 'センサーと frames の t_ms は performance.now()。epoch_ms = t_ms - perf0 + epoch0。ori の alpha/beta/gamma は度（W3C DeviceOrientation、ori_abs は北基準）。gyro は端末座標の回転速度（度/秒）、acc_g は重力込み加速度（m/s²）、quat_abs は端末→地球（東北上）の四元数 x,y,z,w。'};
     S.rec = true; S.t0 = performance.now(); S.bytes = 0; S.err = null;
-    const h = +$('capres').value;
-    S.mr = new MediaRecorder(S.stream, {mimeType: mime, videoBitsPerSecond: h === 2160 ? 25e6 : 12e6});
+    const h = +$('capres').value, M = mode();
+    S.mode = $('capmode').value; S.meta.mode = S.mode; S.auto = M.auto;
+    S.rate = h === 2160 ? M.rate4k : 12e6; S.mime = mime;
     S.ext = mime.includes('mp4') ? 'mp4' : 'webm';
-    S.mr.onstart = () => { S.meta.rec_start_t_ms = performance.now(); };
-    S.mr.ondataavailable = e => { if (e.data && e.data.size) { S.bytes += e.data.size; put('video.' + S.ext, e.data); } };
-    S.mr.start(1000);
+    if (M.seg) { // 区切り: 新しい録画を始めてから古い方を止めるので、つなぎ目で映像が抜けない（数コマ重なる）
+      S.meta.segments = []; S.seg = 0; S.mr = newRec();
+      S.segT = setInterval(() => { if (!S || !S.rec) return; const old = S.mr; S.mr = newRec(); old.stop(); }, M.seg);
+    } else {
+      S.mr = new MediaRecorder(S.stream, {mimeType: mime, videoBitsPerSecond: S.rate});
+      S.mr.onstart = () => { S.meta.rec_start_t_ms = performance.now(); };
+      S.mr.ondataavailable = e => { if (e.data && e.data.size) { S.bytes += e.data.size; put('video.' + S.ext, e.data); } };
+      S.mr.start(1000);
+    }
     if (NSENS) { // WebView のセンサーイベントは届かない端末があるので、アプリではネイティブでも記録する
       const b = performance.now();
       try {
@@ -223,22 +255,32 @@
     S.flushT = setInterval(flush, 3000);
     S.oriL = () => buf.push(`${f(performance.now(), 2)},screen_angle,${screen.orientation ? screen.orientation.angle : window.orientation},,,`);
     window.addEventListener('orientationchange', S.oriL); S.oriL();
-    $('capgo').textContent = '■ 記録終了'; $('capgo').classList.add('on'); $('capres').disabled = true; status();
+    $('capgo').textContent = '■ 記録終了'; $('capgo').classList.add('on'); $('capres').disabled = true; $('capmode').disabled = true; status();
+  }
+  function newRec() { // 区切り録画の1本（video_001.mp4 …）。開始・終了の時刻は meta.segments と sensors.csv に残す
+    const n = ++S.seg, name = `video_${String(n).padStart(3, '0')}.${S.ext}`, seg = {file: S.name + '_' + name};
+    const mr = new MediaRecorder(S.stream, {mimeType: S.mime, videoBitsPerSecond: S.rate});
+    mr.onstart = () => { seg.start_t_ms = performance.now(); if (n === 1) S.meta.rec_start_t_ms = seg.start_t_ms; buf.push(`${f(seg.start_t_ms, 2)},seg_start,${n},,,`); };
+    mr.ondataavailable = e => { if (e.data && e.data.size) { S.bytes += e.data.size; put(name, e.data); } };
+    mr.addEventListener('stop', () => { seg.stop_t_ms = performance.now(); buf.push(`${f(seg.stop_t_ms, 2)},seg_stop,${n},,,`); });
+    S.meta.segments.push(seg); mr.start(1000);
+    return mr;
   }
   async function stop() {
-    S.rec = false; clearInterval(S.flushT); window.removeEventListener('orientationchange', S.oriL);
-    await new Promise(r => { S.mr.onstop = r; S.mr.stop(); });
+    S.rec = false; clearInterval(S.flushT); clearInterval(S.segT); window.removeEventListener('orientationchange', S.oriL);
+    await new Promise(r => { S.mr.addEventListener('stop', r); S.mr.stop(); });
     if (NSENS && S.meta.native_sensors) { try { const r = await NSENS.stop(); S.meta.native_sensors.rows = r.rows; sens.native = r.rows; } catch (e) {} }
     S.meta.rec_stop_t_ms = performance.now(); S.meta.video_bytes = S.bytes; S.meta.counts = {...sens};
     // 記録中の表示が止まる端末があるので、終わったあとに何が取れたかを必ず出す
     S.lastSum = `前回の記録: ${Math.round((S.meta.rec_stop_t_ms - S.t0) / 1000)}秒　動画 ${(S.bytes / 1e6).toFixed(1)}MB　GPS ${sens.gps}　ネイティブ ${sens.native}（向き${sens.ori} ジャイロ${sens.gyro} 四元数${sens.q} 磁気${sens.mag}）`;
     flush(); put('meta.json', JSON.stringify(S.meta, null, 1));
-    $('capgo').textContent = '● 記録開始'; $('capgo').classList.remove('on'); $('capres').disabled = false;
+    $('capgo').textContent = '● 記録開始'; $('capgo').classList.remove('on'); $('capres').disabled = false; $('capmode').disabled = false; dim.hidden = true;
     if (app) {
       note('保存しています…'); await q;
       note((S.err ? '⚠ 保存中にエラーがありました: ' + S.err + '\n' : '') + `保存しました: 端末の ${dirKind === 'DOCUMENTS' ? 'Documents' : 'Android/data/jp.yaeyama.depthmap/files'}/${dir}/`);
       await fillRecs();
-      if (DRIVE) send(); // 撮り終えたら自動でドライブへ
+      if (DRIVE && S.auto) send(); // 歩きは撮り終えたら自動でドライブへ（海面曳航は帰宅後に手動）
+      else if (!S.auto) note($('capmsg').textContent + '\n帰宅後、Wi-Fiにつないでから下の「' + $('capsend').textContent + '」を押してください。');
     } else { saveWeb(); note('ファイルを保存しました（ダウンロードフォルダ）。'); }
   }
 
@@ -267,6 +309,8 @@
   let sending = false;
   async function send() {
     if (sending) return;
+    const c = navigator.connection;
+    if (c && c.type === 'cellular' && !confirm('いまはモバイル通信です。動画は数GBあるので、Wi-Fiでの送信をおすすめします。このまま送りますか？')) return;
     const [kind, name] = $('capsel').value.split('|'), path = 'yaeyama_capture/' + name;
     if (DRIVE) {
       sending = true; $('capsend').disabled = true;
@@ -291,5 +335,6 @@
 
   $('capgo').onclick = () => { if (!S) return; (S.rec ? stop() : start()).catch(e => say('エラー: ' + (e.message || e))); };
   $('capclose').onclick = () => { close(); };
+  $('capdimb').onclick = () => { dim.hidden = false; };
   $('capres').onchange = async () => { if (S && !S.rec) { try { await camStart(); const st = S.stream.getVideoTracks()[0].getSettings(); S.vw = st.width; S.vh = st.height; status(); } catch (e) { say('カメラを切り替えられませんでした'); } } };
 })();
