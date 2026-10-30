@@ -4,10 +4,20 @@
 // シーン座標: x 東, y 北, z 上 (m)。UTM51N の E = x + origin[0], N = y + origin[1]。glb は y-up: glb (x, y, z) = scene (x, z, -y)。
 const W3 = (() => {
 let IDX = null, idxTried = false, PLAIN = false; // PLAIN: the 3D files are not encrypted (no .enc), even when the depth data is
+// The Android app runs from its own origin and does not package data/cap (too big), so it reads the files from GitHub Pages
+// and keeps them in the data cache itself (the service worker only handles same-origin requests).
+const REMOTE = /github\.io$/.test(location.hostname) || /^(localhost|127\.)/.test(location.hostname) && location.port ? '' : 'https://katoakira1114-png.github.io/yaeyamadepth/';
+async function capFetch(p, fresh){
+  if (!REMOTE) { const r = await fetch(p, fresh ? {cache: 'no-cache'} : undefined); if (!r.ok) throw new Error(r.status); return r; }
+  const url = REMOTE + p, c = await caches.open('yaeyama-data-v1');
+  if (!fresh) { const hit = await c.match(url); if (hit) return hit; }
+  try { const r = await fetch(url, {cache: fresh ? 'no-store' : 'default'}); if (!r.ok) throw new Error(r.status); await c.put(url, r.clone()); return r; }
+  catch (e) { const hit = await c.match(url); if (hit) return hit; throw e; }
+}
 async function loadIndex(){
-  if (idxTried) return IDX; idxTried = true;
-  try { IDX = JSON.parse(await (await getData('data/cap/index.json', {cache: 'no-cache'})).text()); } catch (e) { IDX = null; }
-  if (!IDX && ENC) try { const r = await fetch('data/cap/index.json', {cache: 'no-cache'}); if (r.ok) { IDX = await r.json(); PLAIN = true; } } catch (e) { IDX = null; }
+  if (idxTried && IDX) return IDX; idxTried = true;
+  if (!REMOTE) try { IDX = JSON.parse(await (await getData('data/cap/index.json', {cache: 'no-cache'})).text()); } catch (e) { IDX = null; }
+  if (!IDX && (ENC || REMOTE)) try { IDX = await (await capFetch('data/cap/index.json', true)).json(); PLAIN = true; } catch (e) { IDX = null; }
   if (IDX) { for (const s of IDX.scenes) s.g = s.cams.map(([x, y]) => [x + s.origin[0] - META.x0, META.y0 - (y + s.origin[1])]); requestDraw(); }
   return IDX;
 }
@@ -354,7 +364,7 @@ canvas.addEventListener('contextmenu', e => e.preventDefault());
 async function fetchFile(s, name){
   const p = `data/cap/${s.id}/${s.ver ? s.ver + '/' : ''}${name}`; // ver: a rebuilt scene goes to a new folder so cached old files are not reused
   if (!PLAIN) return new Uint8Array(await (await getData(p)).arrayBuffer());
-  const r = await fetch(p); if (!r.ok) throw new Error(r.status); return new Uint8Array(await r.arrayBuffer());
+  return new Uint8Array(await (await capFetch(p)).arrayBuffer());
 }
 async function loadMore(s, upto){
   if (busy) return; busy = true; $('more').hidden = true;
