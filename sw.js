@@ -1,6 +1,6 @@
 // Service Worker: app shell is precached; depth data lives in its own cache,
 // filled by the page's download button (and by any tile fetched while online).
-const SHELL = 'shell-v45';
+const SHELL = 'shell-v46';
 const OTA = 'ota'; // files downloaded by the in-app update button; they win over the packaged ones
 const DATA = 'yaeyama-data-v1';
 const SHELL_FILES = ['./', 'index.html', 'native.js', 'app.js', 'extras.js', 'capture.js', 'walk3d.js', 'view3d.js', 'layers3d.js', 'lib/three.module.min.js', 'lib/OrbitControls.js',
@@ -32,7 +32,7 @@ self.addEventListener('fetch', e => {
     }
     const path = new URL(req.url).pathname, isData = path.includes('/data/');
     // key.json decides which data version is current: always ask the network first
-    if (path.endsWith('/data/key.json')) {
+    if (path.endsWith('/data/key.json') || path.includes('/data/cap/index.json')) { // the captured-3D list changes as new places are added
       try { const r = await fetch(req, {cache: 'no-store'}); if (r.ok) { (await caches.open(DATA)).put(req, r.clone()); return r; } } catch (err) {}
       return (await caches.match(req, {ignoreSearch: true})) || Response.error();
     }

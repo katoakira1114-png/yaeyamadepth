@@ -352,7 +352,7 @@ canvas.addEventListener('contextmenu', e => e.preventDefault());
 
 }
 async function fetchFile(s, name){
-  const p = `data/cap/${s.id}/${name}`;
+  const p = `data/cap/${s.id}/${s.ver ? s.ver + '/' : ''}${name}`; // ver: a rebuilt scene goes to a new folder so cached old files are not reused
   if (!PLAIN) return new Uint8Array(await (await getData(p)).arrayBuffer());
   const r = await fetch(p); if (!r.ok) throw new Error(r.status); return new Uint8Array(await r.arrayBuffer());
 }
