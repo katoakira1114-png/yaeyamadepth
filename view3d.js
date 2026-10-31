@@ -6,7 +6,7 @@ import {OrbitControls} from './lib/OrbitControls.js';
 
 const R_IN = 1500, ST_IN = 10, R_OUT = 6000, ST_OUT = 40;
 let A = null, root, renderer, scene, cam, ctl, ray = new THREE.Raycaster();
-let drapes = [], L = null, opt = {drape: true, land: true, bot: 0, bld: true, port: true, lines: true, trees: true}, bldMesh = null, portMesh = null, lineMesh = null, riverM = null, treeM = null, brgM = null, strM = null, estM = null, furM = null;
+let drapes = [], L = null, opt = {drape: true, land: true, bot: 0, bld: true, port: true, lines: true, trees: true, cap: true}, capM = null, bldMesh = null, portMesh = null, lineMesh = null, riverM = null, treeM = null, brgM = null, strM = null, estM = null, furM = null;
 let center = null, ve = 5, terrain = [], water, me, meLine, trackLine = null, marks = null, building = false, follow = true, needs = false;
 const $ = id => document.getElementById(id);
 
@@ -51,6 +51,7 @@ function setup() {
   <label><input type="checkbox" id="v3port" checked> 港の写真</label>
   <label><input type="checkbox" id="v3ln" checked> 川・池・道路</label>
   <label><input type="checkbox" id="v3tr" checked> 樹木</label>
+  <label><input type="checkbox" id="v3cap" checked> 撮影した立体</label>
   <span>高さ×<b id="v3vev">5</b></span><input type="range" id="v3ve" min="1" max="10" step="0.5" value="5">
 </div>
 <div id="v3busy" class="card">地形を読み込み中…</div>`;
@@ -88,7 +89,7 @@ function setup() {
   $('v3here').onclick = () => { const h = A.here; if (!h) { A.toast('現在地がまだわかりません'); return; } follow = true; moveCenter(h.gx, h.gy); };
   $('v3water').onchange = e => { water.visible = e.target.checked; req(); };
   $('v3bot').onchange = e => { opt.bot = +e.target.value; applyOpt(); };
-  for (const [id, k] of [['v3dr', 'drape'], ['v3bld', 'bld'], ['v3port', 'port'], ['v3ln', 'lines'], ['v3tr', 'trees']]) $(id).onchange = e => { opt[k] = e.target.checked; applyOpt(); };
+  for (const [id, k] of [['v3dr', 'drape'], ['v3bld', 'bld'], ['v3port', 'port'], ['v3ln', 'lines'], ['v3tr', 'trees'], ['v3cap', 'cap']]) $(id).onchange = e => { opt[k] = e.target.checked; applyOpt(); };
   $('v3ve').oninput = e => { ve = +e.target.value; $('v3vev').textContent = ve; applyVE(); };
   addEventListener('resize', onResize);
   addEventListener('fix', onFix);
@@ -194,11 +195,12 @@ function addDrapes() {
   for (const t of terrain) for (const d of L.photoOverlays(t.geometry, center.gx, center.gy)) { drapes.push(d); scene.add(d); }
 }
 function dropExtras() {
+  if (capM) { scene.remove(capM); capM.traverse(m => { if (m.geometry) { m.geometry.dispose(); m.material.dispose(); } }); capM = null; }
   for (const m0 of [bldMesh, portMesh, lineMesh, riverM, treeM, brgM, strM, estM, furM]) if (m0) { scene.remove(m0); m0.traverse(m => { if (!m.geometry) return; m.geometry.dispose(); for (const mt of [].concat(m.material)) { if (mt !== undefined && mt.map && m !== bldMesh) mt.map.dispose(); mt.dispose(); } }); }
   bldMesh = portMesh = lineMesh = riverM = treeM = brgM = strM = estM = furM = null;
 }
 function buildExtras() {
-  dropExtras(); if (!L) return;
+  dropExtras(); buildCap(); if (!L) return;
   if (opt.bld) { bldMesh = L.buildings(center.gx, center.gy, 3500, ve); if (bldMesh) scene.add(bldMesh); }
   if (opt.lines) { lineMesh = L.landLines(center.gx, center.gy, 3500, ve, (x, z) => { const s = A.sampleSync(center.gx + x, center.gy + z); return !s ? 0 : s.d === A.LAND ? s.elev : 0; }); if (lineMesh) scene.add(lineMesh);
     riverM = L.riverMesh(center.gx, center.gy, 3500, ve, (x, z) => { const s = A.sampleSync(center.gx + x, center.gy + z); return !s ? 0 : s.d === A.LAND ? s.elev : 0; }); if (riverM) scene.add(riverM); }
@@ -207,6 +209,34 @@ function buildExtras() {
   if (opt.lines) { brgM = L.bridges(center.gx, center.gy, 3500, ve, (x, z) => { const s = A.sampleSync(center.gx + x, center.gy + z); return !s ? 0 : s.d === A.LAND ? s.elev : 0; }); if (brgM) scene.add(brgM); try { strM = L.structures(center.gx, center.gy, 3500, ve); } catch (e) { strM = null; console.warn('structures', e); } if (strM) scene.add(strM); }
   if (opt.trees) { treeM = L.trees(center.gx, center.gy, 3000, ve, (x, z) => { const s = A.sampleSync(center.gx + x, center.gy + z); return !s || s.d !== A.LAND ? -1 : s.elev; }); if (treeM) scene.add(treeM); }
   if (opt.port) { portMesh = L.portPatch(center.gx, center.gy, R_OUT, ve, (x, z) => { const s = A.sampleSync(center.gx + x, center.gy + z); return !s ? 0 : s.d === A.LAND ? (L.nearStructure(center.gx + x, center.gy + z) ? -1.5 : s.elev) : s.d === A.STRUCTURE ? -1.5 : 0; }); if (portMesh) scene.add(portMesh); }
+}
+// ---------- the places filmed with the phone (walk3d.js): closed solids + ground, set on the land height ----------
+let capSeq = 0;
+async function buildCap() {
+  const seq = ++capSeq;
+  if (!opt.cap || typeof W3 === 'undefined' || !W3.solids) return;
+  let list; try { list = await W3.solids(); } catch (e) { return; }
+  if (seq !== capSeq || root.hidden) return;
+  const M = A.META, grp = new THREE.Group(), bs = 1; // true shape: the filmed places are small, stretching them distorts more than it helps
+  for (const s of list) {
+    const ox = s.origin[0] - M.x0 - center.gx, oz = M.y0 - s.origin[1] - center.gy; // scene (0,0) in view coordinates
+    if (Math.hypot(ox, oz) > R_OUT) continue;
+    // the scene's own heights are relative: put its ground (median height of ground.glb, else lowest 10 %) on the land height there
+    const zs = []; for (const p of s.parts) if (p.name.startsWith('ground') || s.parts.length === 1) for (const pr of p.prims) for (let i = 2; i < pr.pos.length; i += 3 * 7) zs.push(pr.pos[i]);
+    if (!zs.length) for (const p of s.parts) for (const pr of p.prims) for (let i = 2; i < pr.pos.length; i += 3 * 7) zs.push(pr.pos[i]);
+    zs.sort((a, b) => a - b); const z0 = s.parts.some(p => p.name.startsWith('ground')) ? zs[zs.length >> 1] : zs[Math.floor(zs.length * 0.1)] || 0;
+    const sm = A.sampleSync(center.gx + ox, center.gy + oz), base = sm && sm.d === A.LAND ? sm.elev : 0;
+    for (const p of s.parts) for (const pr of p.prims) {
+      const n = pr.pos.length / 3, v = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { v[3 * i] = ox + pr.pos[3 * i]; v[3 * i + 1] = base * ve + (pr.pos[3 * i + 2] - z0) * bs + 0.3; v[3 * i + 2] = oz - pr.pos[3 * i + 1]; }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(v, 3)); g.setAttribute('color', new THREE.BufferAttribute(pr.col, 3));
+      if (pr.idx) g.setIndex(new THREE.BufferAttribute(pr.idx, 1)); g.computeVertexNormals();
+      grp.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({vertexColors: true, side: THREE.DoubleSide})));
+    }
+  }
+  if (seq !== capSeq) { grp.traverse(m => { if (m.geometry) { m.geometry.dispose(); m.material.dispose(); } }); return; }
+  if (capM) { scene.remove(capM); capM.traverse(m => { if (m.geometry) { m.geometry.dispose(); m.material.dispose(); } }); }
+  capM = grp.children.length ? grp : null; if (capM) scene.add(capM); req();
 }
 function recolor() {
   // vertex colours depend on the options; recompute them without rebuilding the geometry
