@@ -1,5 +1,5 @@
 {
-"build": 1793416829,
+"build": 1793420105,
 "files": {
 "app.js": "4c8cb2c703047c1f5d05811ac3f151fbca946f77",
 "apple-touch-icon.png": "3af0f93b82791d4b7222f49bccd115256cfb53ee",
@@ -435,7 +435,7 @@
 "lib/three.module.min.js": "512c8b83df15a015a5ed8fcf7e580be4b46ce4ee",
 "manifest.webmanifest": "14278500662549c35d2329f69d32a3bb5289ee58",
 "native.js": "ea1c1e5b993e41057c7847dcd121d7981ef04fdc",
-"view3d.js": "7666b7f7e05c18e0dd8b27090a587927bbaf3cc2",
+"view3d.js": "6d4f5cee50f2d5bf711034dcb61ca7a718fc931b",
 "walk3d.js": "24f823e1062ab58c4074e61d460d11d6bb3f7238"
 }
 }
