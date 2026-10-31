@@ -127,8 +127,11 @@
   // ---------- GPS（撮影専用に毎回の測位を残す）----------
   let gStop = null;
   function gpsStart() {
+    if (gStop) gStop(); // 前の待ち受けが残ると同じ測位が何重にも記録される
+    let lastEpoch = null;
     const log = (lat, lon, acc, alt, altAcc, hdg, spd, tEpoch) => {
       if (!S) return; S.lastFix = {acc, t: performance.now()};
+      if (tEpoch && tEpoch === lastEpoch) return; lastEpoch = tEpoch;
       if (!S.rec) return; sens.gps++;
       gbuf.push(`${f(performance.now(), 2)},${tEpoch || ''},${f(lat, 8)},${f(lon, 8)},${f(acc, 2)},${f(alt, 2)},${f(altAcc, 2)},${f(hdg, 2)},${f(spd, 2)}`);
     };
@@ -223,6 +226,13 @@
   async function start() {
     const mime = pickMime();
     if (!mime) { toast('この端末では動画を記録できません'); return; }
+    S.mr = null;
+    // 画面を消したあとなどでカメラが止まっていることがある。止まっていれば開き直してから記録する
+    const tr0 = S.stream && S.stream.getVideoTracks()[0];
+    if (!tr0 || tr0.readyState === 'ended') {
+      say('カメラを開き直しています…');
+      try { await camStart(); } catch (e) { say('カメラを開けませんでした: ' + (e.message || e.name)); return; }
+    }
     const now = new Date(); S.name = stamp(now);
     if (app) { try { await mkdir(S.name); } catch (e) { say(e.message); return; } }
     Object.keys(web).forEach(k => delete web[k]); Object.keys(sens).forEach(k => { sens[k] = 0; });
@@ -338,7 +348,13 @@
   }
   $('capsend').onclick = () => { send().catch(e => note('送れませんでした: ' + (e.message || e))); };
 
-  $('capgo').onclick = () => { if (!S) return; (S.rec ? stop() : start()).catch(e => say('エラー: ' + (e.message || e))); };
+  $('capgo').onclick = () => {
+    if (!S || S.busy) return; S.busy = true; // 連打で記録が細切れにならないよう、前の操作が終わるまで受け付けない
+    (S.rec ? stop() : start()).catch(e => {
+      if (S && S.rec && !S.mr) { S.rec = false; clearInterval(S.flushT); clearInterval(S.segT); } // 録画が始められなかった
+      say('エラー: ' + (e.message || e) + '\nもう一度「記録開始」を押してください。');
+    }).finally(() => { if (S) S.busy = false; });
+  };
   $('capclose').onclick = () => { close(); };
   $('capdimb').onclick = () => { dim.hidden = false; };
   $('capres').onchange = async () => { if (S && !S.rec) { try { await camStart(); const st = S.stream.getVideoTracks()[0].getSettings(); S.vw = st.width; S.vh = st.height; status(); } catch (e) { say('カメラを切り替えられませんでした'); } } };
