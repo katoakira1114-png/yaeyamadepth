@@ -73,12 +73,17 @@ function facade() {
   return facadeTex;
 }
 // Buildings: walls get a floors-and-windows texture (floor height 3.2 m from the stored height), roofs inside the harbour photo use that photo.
+// places rebuilt from the user's own videos win over the map's buildings, trees and street furniture there (grid metres)
+let EXCL = null;
+export function setExclude(f) { EXCL = f; }
+const excl = (gx, gy) => !!EXCL && EXCL(gx, gy);
 export function buildings(cx, cy, R, ve) {
   if (!bld) return null;
   const bs = Math.max(1, ve * 0.6), W = {p: [], c: [], u: []}, RP = {p: [], c: [], u: []}, RF = {p: [], c: [], u: []};
   for (let n = 0; n < bld.length; n++) {
     const b = bld[n], gx = GX0 + b[0] / 10, gy = GY0 + b[1] / 10;
     if (Math.abs(gx - cx) > R || Math.abs(gy - cy) > R) continue;
+    if (EXCL) { let hit = excl(gx, gy); for (let i = 0; !hit && i < b[2].length; i += 2) hit = excl(gx + b[2][i] / 10, gy + b[2][i + 1] / 10); if (hit) continue; }
     let T = triCache.get(n);
     if (!T) {
       const d = b[2], v = [new THREE.Vector2(b[0] / 10, b[1] / 10)];
@@ -258,7 +263,7 @@ export function trees(cx, cy, R, ve, height) {
   const i0 = Math.max(0, Math.floor((cx - R - GX0) / 10)), i1 = Math.min(W - 1, Math.ceil((cx + R - GX0) / 10));
   const j0 = Math.max(0, Math.floor((cy - R - GY0) / 10)), j1 = Math.min(H - 1, Math.ceil((cy + R - GY0) / 10));
   for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
-    const v = d[(j * W + i) * 4]; if (!v) continue;
+    const v = d[(j * W + i) * 4]; if (!v || excl(GX0 + (i + 0.5) * 10, GY0 + (j + 0.5) * 10)) continue;
     const x = GX0 + (i + 0.5) * 10 - cx, z = GY0 + (j + 0.5) * 10 - cy, dist = Math.hypot(x, z);
     if (dist > R) continue;
     const s = dist < 800 ? 1 : dist < 1600 ? 2 : 4;
@@ -381,7 +386,7 @@ export function furniture(cx, cy, R, ve, height) {
   if (!furn) return null;
   const grp = new THREE.Group(), bs = Math.max(1, ve * 0.6);
   for (let k = 0; k < FURN.length; k++) {
-    const pts = furn.filter(o => o[0] === k && Math.abs(GX0 + o[1] / 10 - cx) < R && Math.abs(GY0 + o[2] / 10 - cy) < R); if (!pts.length) continue;
+    const pts = furn.filter(o => o[0] === k && Math.abs(GX0 + o[1] / 10 - cx) < R && Math.abs(GY0 + o[2] / 10 - cy) < R && !excl(GX0 + o[1] / 10, GY0 + o[2] / 10)); if (!pts.length) continue;
     const F = FURN[k], g = new THREE.CylinderGeometry(F.r, F.r, 1, 6); g.translate(0, 0.5, 0);
     const m = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({color: F.c}), pts.length), M = new THREE.Matrix4(), q = new THREE.Quaternion();
     pts.forEach((o, i) => { const x = GX0 + o[1] / 10 - cx, z = GY0 + o[2] / 10 - cy; M.compose(new THREE.Vector3(x, Math.max(height(x, z), 0) * ve, z), q, new THREE.Vector3(Math.max(1, bs / 2), F.h * bs, Math.max(1, bs / 2))); m.setMatrixAt(i, M); });
