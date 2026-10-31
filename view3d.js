@@ -211,7 +211,21 @@ function buildExtras() {
   if (opt.port) { portMesh = L.portPatch(center.gx, center.gy, R_OUT, ve, (x, z) => { const s = A.sampleSync(center.gx + x, center.gy + z); return !s ? 0 : s.d === A.LAND ? (L.nearStructure(center.gx + x, center.gy + z) ? -1.5 : s.elev) : s.d === A.STRUCTURE ? -1.5 : 0; }); if (portMesh) scene.add(portMesh); }
 }
 // ---------- the places filmed with the phone (walk3d.js): closed solids + ground, set on the land height ----------
-let capSeq = 0, capKey = '';
+let capSeq = 0, capKey = '', capH = new Map();
+// the filmed ground wins over the map's land: terrain points under a filmed place are pushed below its lowest ground surface
+function sinkTerrain() {
+  if (!capH.size) return;
+  const C = 2, R = 4; // search ±8 m: the terrain points are 10 m apart
+  for (const m of terrain) {
+    const p = m.geometry.attributes.position.array; let changed = false;
+    for (let k = 0; k < p.length; k += 3) {
+      const i0 = Math.floor((center.gx + p[k]) / C), j0 = Math.floor((center.gy + p[k + 2]) / C); let lo = Infinity;
+      for (let a = -R; a <= R; a++) for (let b = -R; b <= R; b++) { const h = capH.get((i0 + a) + ',' + (j0 + b)); if (h !== undefined && h < lo) lo = h; }
+      if (lo < Infinity && p[k + 1] > lo - 0.8) { p[k + 1] = lo - 0.8; changed = true; }
+    }
+    if (changed) { m.geometry.attributes.position.needsUpdate = true; m.geometry.computeVertexNormals(); m.geometry.computeBoundingSphere(); }
+  }
+}
 async function buildCap() {
   const seq = ++capSeq;
   if (!opt.cap || typeof W3 === 'undefined' || !W3.solids) return;
@@ -227,7 +241,7 @@ async function buildCap() {
     L.setExclude((gx, gy) => { const i = Math.floor(gx / C), j = Math.floor(gy / C); for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) if (cells.has((i + a) + ',' + (j + b))) return true; return false; });
     buildExtras(); return; // rebuild the map layers without the covered buildings; this runs again and draws the solids
   }
-  const grp = new THREE.Group(), bs = 1; // true shape: the filmed places are small, stretching them distorts more than it helps
+  const grp = new THREE.Group(), bs = 1; capH = new Map(); // true shape: the filmed places are small, stretching them distorts more than it helps
   for (const s of list) {
     const ox = s.origin[0] - M.x0 - center.gx, oz = M.y0 - s.origin[1] - center.gy; // scene (0,0) in view coordinates
     if (Math.hypot(ox, oz) > R_OUT) continue;
@@ -237,8 +251,9 @@ async function buildCap() {
     zs.sort((a, b) => a - b); const z0 = s.parts.some(p => p.name.startsWith('ground')) ? zs[zs.length >> 1] : zs[Math.floor(zs.length * 0.1)] || 0;
     const sm = A.sampleSync(center.gx + ox, center.gy + oz), base = sm && sm.d === A.LAND ? sm.elev : 0;
     for (const p of s.parts) for (const pr of p.prims) {
-      const n = pr.pos.length / 3, v = new Float32Array(n * 3);
-      for (let i = 0; i < n; i++) { v[3 * i] = ox + pr.pos[3 * i]; v[3 * i + 1] = base * ve + (pr.pos[3 * i + 2] - z0) * bs + 0.3; v[3 * i + 2] = oz - pr.pos[3 * i + 1]; }
+      const n = pr.pos.length / 3, v = new Float32Array(n * 3), gnd = p.name.startsWith('ground');
+      for (let i = 0; i < n; i++) { v[3 * i] = ox + pr.pos[3 * i]; v[3 * i + 1] = base * ve + (pr.pos[3 * i + 2] - z0) * bs + 0.3; v[3 * i + 2] = oz - pr.pos[3 * i + 1];
+        if (gnd) { const k = Math.floor((center.gx + v[3 * i]) / C) + ',' + Math.floor((center.gy + v[3 * i + 2]) / C), h = capH.get(k); if (h === undefined || v[3 * i + 1] < h) capH.set(k, v[3 * i + 1]); } }
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(v, 3)); g.setAttribute('color', new THREE.BufferAttribute(pr.col, 3));
       if (pr.idx) g.setIndex(new THREE.BufferAttribute(pr.idx, 1)); g.computeVertexNormals();
       grp.add(new THREE.Mesh(g, new THREE.MeshLambertMaterial({vertexColors: true, side: THREE.DoubleSide})));
@@ -246,7 +261,7 @@ async function buildCap() {
   }
   if (seq !== capSeq) { grp.traverse(m => { if (m.geometry) { m.geometry.dispose(); m.material.dispose(); } }); return; }
   if (capM) { scene.remove(capM); capM.traverse(m => { if (m.geometry) { m.geometry.dispose(); m.material.dispose(); } }); }
-  capM = grp.children.length ? grp : null; if (capM) scene.add(capM); req();
+  capM = grp.children.length ? grp : null; if (capM) scene.add(capM); sinkTerrain(); req();
 }
 function recolor() {
   // vertex colours depend on the options; recompute them without rebuilding the geometry
@@ -274,8 +289,8 @@ function moveCenter(gx, gy) {
   rebuild();
 }
 function applyVE() {
-  buildExtras();
   for (const m of terrain) { const p = m.geometry.attributes.position.array, raw = m.userData.raw; for (let i = 0; i < raw.length; i++) p[i * 3 + 1] = raw[i] * ve; m.geometry.attributes.position.needsUpdate = true; m.geometry.computeVertexNormals(); }
+  buildExtras();
   buildMarks(); updateMe(); req();
 }
 const local = (lat, lon) => { const [gx, gy] = A.ll2g(lat, lon); return [gx - center.gx, gy - center.gy]; };
