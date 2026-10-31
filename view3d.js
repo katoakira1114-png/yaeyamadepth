@@ -211,13 +211,23 @@ function buildExtras() {
   if (opt.port) { portMesh = L.portPatch(center.gx, center.gy, R_OUT, ve, (x, z) => { const s = A.sampleSync(center.gx + x, center.gy + z); return !s ? 0 : s.d === A.LAND ? (L.nearStructure(center.gx + x, center.gy + z) ? -1.5 : s.elev) : s.d === A.STRUCTURE ? -1.5 : 0; }); if (portMesh) scene.add(portMesh); }
 }
 // ---------- the places filmed with the phone (walk3d.js): closed solids + ground, set on the land height ----------
-let capSeq = 0;
+let capSeq = 0, capKey = '';
 async function buildCap() {
   const seq = ++capSeq;
   if (!opt.cap || typeof W3 === 'undefined' || !W3.solids) return;
   let list; try { list = await W3.solids(); } catch (e) { return; }
   if (seq !== capSeq || root.hidden) return;
-  const M = A.META, grp = new THREE.Group(), bs = 1; // true shape: the filmed places are small, stretching them distorts more than it helps
+  // footprint of every filmed place (2 m cells, grid metres): the map's own buildings and trees there are left out
+  const M = A.META, cells = new Set(), C = 2;
+  for (const s of list) { const ox = s.origin[0] - M.x0, oy = M.y0 - s.origin[1];
+    for (const p of s.parts) for (const pr of p.prims) for (let i = 0; i < pr.pos.length; i += 3) cells.add(Math.floor((ox + pr.pos[i]) / C) + ',' + Math.floor((oy - pr.pos[i + 1]) / C)); }
+  const key = list.map(s => s.id).join('|') + ':' + cells.size;
+  if (L && L.setExclude && key !== capKey) {
+    capKey = key;
+    L.setExclude((gx, gy) => { const i = Math.floor(gx / C), j = Math.floor(gy / C); for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) if (cells.has((i + a) + ',' + (j + b))) return true; return false; });
+    buildExtras(); return; // rebuild the map layers without the covered buildings; this runs again and draws the solids
+  }
+  const grp = new THREE.Group(), bs = 1; // true shape: the filmed places are small, stretching them distorts more than it helps
   for (const s of list) {
     const ox = s.origin[0] - M.x0 - center.gx, oz = M.y0 - s.origin[1] - center.gy; // scene (0,0) in view coordinates
     if (Math.hypot(ox, oz) > R_OUT) continue;
