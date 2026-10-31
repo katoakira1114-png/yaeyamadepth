@@ -294,6 +294,38 @@ async function addGLB(u8){
   for (const ni of sc) await visit(ni, I);
   dirty = true;
 }
+// closed solids of every scene as plain arrays for the depth-map 3D view (view3d.js): positions in the scene frame (x east, y north, z up)
+function glbPrims(u8){
+  const g = parseGLB(u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength)), J = g.json, out = [];
+  const visit = (ni, parent) => {
+    const nd = J.nodes[ni], M = mmul(parent, nodeMat(nd));
+    if (nd.mesh != null) for (const pr of J.meshes[nd.mesh].primitives) {
+      if (pr.mode != null && pr.mode !== 4) continue;
+      const P = acc(g, pr.attributes.POSITION).arr, nv = P.length / 3, pos = new Float32Array(nv * 3), col = new Float32Array(nv * 3);
+      for (let i = 0; i < nv; i++) { const x = P[3 * i], y = P[3 * i + 1], z = P[3 * i + 2];
+        pos[3 * i] = M[0] * x + M[4] * y + M[8] * z + M[12]; pos[3 * i + 1] = -(M[2] * x + M[6] * y + M[10] * z + M[14]); pos[3 * i + 2] = M[1] * x + M[5] * y + M[9] * z + M[13]; }
+      const mat = J.materials && J.materials[pr.material], f = (mat && mat.pbrMetallicRoughness && mat.pbrMetallicRoughness.baseColorFactor) || [0.8, 0.8, 0.8, 1];
+      if (pr.attributes.COLOR_0 != null) { const {arr, n} = acc(g, pr.attributes.COLOR_0); for (let i = 0; i < nv; i++) for (let k = 0; k < 3; k++) col[3 * i + k] = arr[n * i + k] * f[k]; }
+      else for (let i = 0; i < nv; i++) col.set(f.slice(0, 3), 3 * i);
+      const idx = pr.indices != null ? Uint32Array.from(acc(g, pr.indices).arr) : null;
+      out.push({pos, col, idx});
+    }
+    for (const c of nd.children || []) visit(c, M);
+  };
+  const I = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+  for (const ni of J.scenes ? J.scenes[J.scene || 0].nodes : J.nodes.map((_, i) => i)) visit(ni, I);
+  return out;
+}
+async function solids(){
+  await loadIndex(); if (!IDX) return [];
+  const out = [];
+  for (const s of IDX.scenes) {
+    if (!(s.solids || []).length) continue;
+    if (!s._prims) { const ps = []; for (const m of s.solids) try { ps.push({name: m, prims: glbPrims(await fetchFile(s, m))}); } catch (e) { console.warn(e); } s._prims = ps; }
+    out.push({id: s.id, name: s.name, origin: s.origin, parts: s._prims});
+  }
+  return out;
+}
 function drawMeshes(proj, view){
   gl.useProgram(mprog); gl.uniformMatrix4fv(muProj, false, proj); gl.uniformMatrix4fv(muView, false, view);
   for (const m of meshes) { gl.bindVertexArray(m.vao); gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, m.tex || white);
@@ -389,5 +421,5 @@ function openScene(s, at){
 }
 function closeScene(){ running = false; $('').hidden = true; paused2d = false; requestDraw(); }
 
-return {loadIndex, draw, longPress, open: openScene, close: closeScene};
+return {loadIndex, draw, longPress, open: openScene, close: closeScene, solids};
 })();
