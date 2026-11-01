@@ -36,14 +36,14 @@
 <div class="row"><select id="capres" class="fld" style="width:auto"><option value="2160">4K</option><option value="1080">1080p</option></select>
 <select id="capmode" class="fld" style="width:auto"><option value="walk">歩き</option><option value="tow">海面曳航（長時間）</option></select>
 <button class="pri" id="capgo">● 記録開始</button><button id="capclose">閉じる</button><button id="capdimb">画面を暗く</button></div>
-<div class="row" id="capsendrow" hidden><select id="capsel" class="fld" style="width:auto;max-width:60%"></select><button id="capsend">PCに送る</button></div>
+<div class="row" id="capsendrow" hidden><select id="capsel" class="fld" style="width:auto;max-width:60%"></select><button id="capsend">PCに送る</button><button id="capsendall" hidden>未送信をすべて送る</button></div>
 <small id="caphelp" style="color:#9fb0d8"></small></div>`;
   document.body.appendChild(root);
   const dim = document.createElement('div');
   dim.id = 'capdim'; dim.hidden = true; dim.textContent = '記録は続いています\nタップで画面を戻す';
   document.body.appendChild(dim);
   dim.onclick = () => { if (!lk.hidden) return; dim.hidden = true; }; // 記録中は長押しでだけ戻す（下の hold）
-  // 記録中は（歩き・海面曳航とも）、波や水滴で触れても操作されないよう、中央の「撮影停止」（長押し）と少し下の「画面を暗く」だけにする。
+  // 海面曳航の記録中は、波や水滴で触れても操作されないよう、中央の「撮影停止」（長押し）と少し下の「画面を暗く」だけにする。
   // 画面の縁には何も置かない。長押しで文字選択や「タップして検索」が出ないよう、選択・メニューも止める。
   const lk = document.createElement('div');
   lk.id = 'caplock'; lk.hidden = true;
@@ -65,8 +65,8 @@
   // 海面曳航: タッパー等に入れて引っぱり、真下（やや斜め）の海底を長時間撮る。
   // 落ちても失う分が少ないよう動画を5分ごとに別ファイルにし、送信は帰宅後に手動（自動でドライブへは送らない）。
   const MODES = {
-    walk: {seg: 0, rate4k: 25e6, auto: true, help: 'スマホは横向きで、建物に向けて斜め前方を写しながら、ゆっくり歩いてください。1ブロック一周して始点に戻ると、ずれの計算がしやすくなります。'},
-    tow: {seg: 300e3, rate4k: 16e6, auto: false, help: 'カメラを真下（少し斜め）の海底に向け、隣の列と半分以上重なるよう、まっすぐ往復してください。最初と最後にGPSの画面か時計を2〜3秒写すと時刻合わせが確実になります。動画は5分ごとに分けて保存し、送信は帰宅後にWi-Fiで「ドライブに送る」を押します。記録中は「画面を暗く」で発熱と電池を抑えられます。'}
+    walk: {seg: 0, rate4k: 25e6, auto: true, help: 'スマホは横向きで、建物に向けて斜め前方を写しながら、ゆっくり歩いてください。1ブロック一周して始点に戻ると、ずれの計算がしやすくなります。送信は帰宅後にWi-Fiで「未送信をすべて送る」を押します。'},
+    tow: {seg: 300e3, rate4k: 16e6, auto: false, help: 'カメラを真下（少し斜め）の海底に向け、隣の列と半分以上重なるよう、まっすぐ往復してください。最初と最後にGPSの画面か時計を2〜3秒写すと時刻合わせが確実になります。動画は5分ごとに分けて保存し、送信は帰宅後にWi-Fiで「未送信をすべて送る」を押します。記録中は「画面を暗く」で発熱と電池を抑えられます。'}
   };
   const mode = () => MODES[$('capmode').value] || MODES.walk;
   try { const m = localStorage.getItem('capmode'); if (m && MODES[m]) $('capmode').value = m; } catch (e) {}
@@ -299,7 +299,7 @@
     S.flushT = setInterval(flush, 3000);
     S.oriL = () => buf.push(`${f(performance.now(), 2)},screen_angle,${screen.orientation ? screen.orientation.angle : window.orientation},,,`);
     window.addEventListener('orientationchange', S.oriL); S.oriL();
-    root.classList.add('rec'); $('capgo').textContent = '■ 記録終了'; $('capgo').classList.add('on'); $('capres').disabled = true; $('capmode').disabled = true; lock(true); status();
+    root.classList.add('rec'); $('capgo').textContent = '■ 記録終了'; $('capgo').classList.add('on'); $('capres').disabled = true; $('capmode').disabled = true; lock(S.mode === 'tow'); status();
   }
   function newRec() { // 区切り録画の1本（video_001.mp4 …）。開始・終了の時刻は meta.segments と sensors.csv に残す
     const n = ++S.seg, name = `video_${String(n).padStart(3, '0')}.${S.ext}`, seg = {file: S.name + '_' + name};
@@ -323,8 +323,8 @@
       note('保存しています…'); await q;
       note((S.err ? '⚠ 保存中にエラーがありました: ' + S.err + '\n' : '') + S.lastSum + `\n保存しました: 端末の ${dirKind === 'DOCUMENTS' ? 'Documents' : 'Android/data/jp.yaeyama.depthmap/files'}/${dir}/`);
       await fillRecs();
-      if (DRIVE && S.auto) send(); // 歩きは撮り終えたら自動でドライブへ（海面曳航は帰宅後に手動）
-      else if (!S.auto) note($('capmsg').textContent + '\n帰宅後、Wi-Fiにつないでから下の「' + $('capsend').textContent + '」を押してください。');
+      // 送信はいつも帰宅後に手動（自動では送らない）
+      note($('capmsg').textContent + '\n帰宅後、Wi-Fiにつないでから「' + (DRIVE ? '未送信をすべて送る' : $('capsend').textContent) + '」を押してください。');
     } else { saveWeb(); note('ファイルを保存しました（ダウンロードフォルダ）。'); }
   }
 
@@ -334,7 +334,7 @@
   const NSENS = app && window.Capacitor.isPluginAvailable && window.Capacitor.isPluginAvailable('SensorLog') ? P.SensorLog : null;
   const DRIVE = app && window.Capacitor.isPluginAvailable && window.Capacitor.isPluginAvailable('DriveUpload') ? P.DriveUpload : null;
   if (DRIVE) {
-    $('capsend').textContent = 'ドライブに送る';
+    $('capsend').textContent = 'ドライブに送る'; $('capsendall').hidden = false;
     DRIVE.addListener('progress', d => note(`ドライブへ送信中 ${d.done}/${d.of}: ${d.file}\n${(d.sent / 1e6).toFixed(1)} / ${(d.total / 1e6).toFixed(1)} MB（アプリを閉じないでください）`));
   }
   async function listRecs() {
@@ -375,6 +375,45 @@
     try { await P.Share.share({title: '撮影 ' + name, files: uris}); }
     catch (e) { if (!/cancel/i.test(e.message || '')) note('送れませんでした: ' + (e.message || e)); }
   }
+  // ドライブ（このアプリが送ったファイル）を見て、端末にあってドライブに無いファイルを撮影ごとにまとめて送る
+  async function driveNames(token) {
+    const have = new Set(); let pt = '';
+    do {
+      const q = encodeURIComponent("trashed=false and mimeType!='application/vnd.google-apps.folder'");
+      const r = await fetch(`https://www.googleapis.com/drive/v3/files?pageSize=1000&fields=nextPageToken,files(name,size)&q=${q}` + (pt ? '&pageToken=' + pt : ''), {headers: {Authorization: 'Bearer ' + token}});
+      if (!r.ok) throw new Error('ドライブの一覧 ' + r.status);
+      const j = await r.json(); j.files.forEach(f => have.add(f.name + '|' + f.size)); pt = j.nextPageToken || '';
+    } while (pt);
+    return have;
+  }
+  async function sendAll() {
+    if (sending || !DRIVE) return;
+    const c = navigator.connection;
+    sending = true; $('capsend').disabled = $('capsendall').disabled = true;
+    try {
+      note('Google の許可を確認しています…');
+      const {token} = await DRIVE.authorize();
+      note('ドライブにあるファイルを確かめています…');
+      const have = await driveNames(token), todo = [];
+      for (const r of await listRecs()) {
+        const fs = (await P.Filesystem.readdir({path: 'yaeyama_capture/' + r.name, directory: r.kind})).files.filter(f => f.type === 'file' && f.size > 0);
+        const miss = fs.filter(f => !have.has(f.name + '|' + f.size));
+        if (miss.length) todo.push({...r, n: miss.length, bytes: miss.reduce((a, f) => a + f.size, 0)});
+      }
+      if (!todo.length) { note('未送信のファイルはありません（すべてドライブにあります）。'); return; }
+      const gb = (todo.reduce((a, t) => a + t.bytes, 0) / 1e9).toFixed(2), n = todo.reduce((a, t) => a + t.n, 0);
+      const cell = c && c.type === 'cellular' ? '\nいまはモバイル通信です。Wi-Fiでの送信をおすすめします。' : '';
+      if (!confirm(`未送信: 撮影${todo.length}回分、${n}ファイル、${gb}GB\n${todo.map(t => t.name).join('\n')}${cell}\n\nドライブに送りますか？`)) { note(''); return; }
+      let k = 0;
+      for (const t of todo) {
+        k++; note(`ドライブへ送り始めます（${k}/${todo.length}: ${t.name}）…`);
+        await DRIVE.upload({token, path: 'yaeyama_capture/' + t.name, directory: t.kind});
+      }
+      note(`ドライブに送りました（撮影${todo.length}回分、${n}ファイル、${gb}GB）。PCの マイドライブ\\yaeyama_capture に届きます。`);
+    } catch (e) { note('⚠ 送れませんでした: ' + (e.message || e) + '\n電波の良い所でもう一度「未送信をすべて送る」を押すと、続きから送ります。'); }
+    finally { sending = false; $('capsend').disabled = $('capsendall').disabled = false; }
+  }
+  $('capsendall').onclick = () => { sendAll(); };
   $('capsend').onclick = () => { send().catch(e => note('送れませんでした: ' + (e.message || e))); };
 
   $('capgo').onclick = () => {
