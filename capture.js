@@ -18,7 +18,16 @@
 #capgo.on{background:#c62828;border-color:#ff8a80}
 #capdim{position:fixed;inset:0;background:#000;z-index:21;display:flex;align-items:flex-end;justify-content:center;padding-bottom:40px;color:#556;font-size:14px;text-align:center;white-space:pre-line}
 #capdim[hidden]{display:none}
-#cap.rec video{flex:none;height:28vh}`;
+#cap.rec video{flex:none;height:28vh}
+#cap,#capdim,#caplock{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+#capdim,#caplock{touch-action:none}
+#caplock{position:fixed;inset:0;z-index:22;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center}
+#caplock[hidden]{display:none}
+#lkstat{color:#9fb0d8;font-size:15px;margin-bottom:3vh;text-align:center;white-space:pre-line}
+#lkstop{--p:0;width:46vmin;height:46vmin;border-radius:50%;border:4px solid #ff8a80;color:#fff;font-size:22px;font-weight:bold;line-height:1.4;
+ background:conic-gradient(#ff8a80 calc(var(--p)*1turn),#c62828 0)}
+#lkdim{margin-top:16vh;width:34vmin;height:15vmin;border-radius:12px;border:2px solid #557;background:#223;color:#cdd;font-size:17px}
+#capdim.lk{align-items:center;padding:0}`;
   document.head.appendChild(css);
   const root = document.createElement('div');
   root.id = 'cap'; root.hidden = true;
@@ -33,7 +42,26 @@
   const dim = document.createElement('div');
   dim.id = 'capdim'; dim.hidden = true; dim.textContent = '記録は続いています\nタップで画面を戻す';
   document.body.appendChild(dim);
-  dim.onclick = () => { dim.hidden = true; };
+  dim.onclick = () => { if (!lk.hidden) return; dim.hidden = true; }; // 海面曳航の記録中は長押しでだけ戻す（下の hold）
+  // 海面曳航の記録中は、波や水滴で触れても操作されないよう、中央の「撮影停止」（長押し）と少し下の「画面を暗く」だけにする。
+  // 画面の縁には何も置かない。長押しで文字選択や「タップして検索」が出ないよう、選択・メニューも止める。
+  const lk = document.createElement('div');
+  lk.id = 'caplock'; lk.hidden = true;
+  lk.innerHTML = '<div id="lkstat"></div><button id="lkstop">撮影停止<br><small>2秒長押し</small></button><button id="lkdim">画面を暗く</button>';
+  document.body.appendChild(lk);
+  const noMenu = e => { if (!root.hidden) e.preventDefault(); };
+  ['contextmenu', 'selectstart', 'dragstart'].forEach(k => document.addEventListener(k, noMenu, true));
+  function hold(el, ms, fn, prog) { // 押し続けたときだけ fn。途中で離すと最初から
+    let t0 = 0, raf = 0;
+    const reset = () => { t0 = 0; cancelAnimationFrame(raf); if (prog) prog(0); };
+    const step = () => { if (!t0) return; const p = (performance.now() - t0) / ms; if (p >= 1) { reset(); fn(); return; } if (prog) prog(p); raf = requestAnimationFrame(step); };
+    el.addEventListener('pointerdown', e => { e.preventDefault(); try { el.setPointerCapture(e.pointerId); } catch (x) {} if (!t0) { t0 = performance.now(); step(); } });
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(k => el.addEventListener(k, reset));
+  }
+  hold($('lkstop'), 2000, () => { $('capgo').onclick(); }, p => { $('lkstop').style.setProperty('--p', p); });
+  hold(dim, 1500, () => { if (!lk.hidden) dim.hidden = true; });
+  $('lkdim').onclick = () => { dim.textContent = '記録は続いています\n長押しで画面を戻す'; dim.classList.add('lk'); dim.hidden = false; };
+  const lock = on => { lk.hidden = !on; if (!on) { dim.classList.remove('lk'); dim.textContent = '記録は続いています\nタップで画面を戻す'; } };
   // 海面曳航: タッパー等に入れて引っぱり、真下（やや斜め）の海底を長時間撮る。
   // 落ちても失う分が少ないよう動画を5分ごとに別ファイルにし、送信は帰宅後に手動（自動でドライブへは送らない）。
   const MODES = {
@@ -184,6 +212,7 @@
     const fx = S.lastFix, gpsTxt = fx ? `GPS 誤差 約${Math.round(fx.acc)}m（${Math.round((performance.now() - fx.t) / 1000)}秒前）` : 'GPS 待ち';
     if (!S.rec) { say(`${gpsTxt}\n映像 ${S.vw || '?'}×${S.vh || '?'}　「記録開始」で動画とセンサーの記録を始めます。${app ? '' : '\n（ブラウザ版: 終わると数個のファイルを保存します）'}${S.lastSum ? '\n' + S.lastSum : ''}`); return; }
     const sec = Math.round((performance.now() - S.t0) / 1000);
+    if (!lk.hidden) $('lkstat').textContent = `● 記録中 ${Math.floor(sec / 60)}分${String(sec % 60).padStart(2, '0')}秒`;
     if (NSENS && S.meta.native_sensors) NSENS.status().then(r => { sens.native = r.rows; }).catch(() => {});
     const segTxt = S.seg ? `（${S.seg}本目）` : '', batTxt = S.bat ? `　電池 ${Math.round(S.bat.level * 100)}%` : '';
     say(`● 記録中 ${Math.floor(sec / 60)}:${pad(sec % 60)}　動画 ${(S.bytes / 1e6).toFixed(0)}MB${segTxt}${batTxt}\n${gpsTxt}\nセンサー ${NSENS ? `ネイティブ${sens.native || 0}` : `向き${sens.ori} ジャイロ${sens.gyro} 四元数${sens.q} 磁気${sens.mag}`} GPS${sens.gps}${S.err ? '\n⚠ 保存エラー: ' + S.err : ''}`);
@@ -219,7 +248,7 @@
     if (gStop) gStop(); gStop = null;
     extra.splice(0).forEach(s => { try { s.stop(); } catch (e) {} });
     window.removeEventListener('deviceorientationabsolute', onOri); window.removeEventListener('deviceorientation', onOri); window.removeEventListener('devicemotion', onMotion);
-    document.removeEventListener('visibilitychange', reWake); dim.hidden = true;
+    document.removeEventListener('visibilitychange', reWake); dim.hidden = true; lock(false);
     $('capv').srcObject = null; S = null; root.hidden = true;
   }
 
@@ -270,7 +299,7 @@
     S.flushT = setInterval(flush, 3000);
     S.oriL = () => buf.push(`${f(performance.now(), 2)},screen_angle,${screen.orientation ? screen.orientation.angle : window.orientation},,,`);
     window.addEventListener('orientationchange', S.oriL); S.oriL();
-    root.classList.add('rec'); $('capgo').textContent = '■ 記録終了'; $('capgo').classList.add('on'); $('capres').disabled = true; $('capmode').disabled = true; status();
+    root.classList.add('rec'); $('capgo').textContent = '■ 記録終了'; $('capgo').classList.add('on'); $('capres').disabled = true; $('capmode').disabled = true; lock(S.mode === 'tow'); status();
   }
   function newRec() { // 区切り録画の1本（video_001.mp4 …）。開始・終了の時刻は meta.segments と sensors.csv に残す
     const n = ++S.seg, name = `video_${String(n).padStart(3, '0')}.${S.ext}`, seg = {file: S.name + '_' + name};
@@ -289,7 +318,7 @@
     // 記録中の表示が止まる端末があるので、終わったあとに何が取れたかを必ず出す
     S.lastSum = `前回の記録: ${Math.round((S.meta.rec_stop_t_ms - S.t0) / 1000)}秒　動画 ${(S.bytes / 1e6).toFixed(1)}MB　GPS ${sens.gps}　ネイティブ ${sens.native}（向き${sens.ori} ジャイロ${sens.gyro} 四元数${sens.q} 磁気${sens.mag}）`;
     flush(); put('meta.json', JSON.stringify(S.meta, null, 1));
-    root.classList.remove('rec'); status(); $('capgo').textContent = '● 記録開始'; $('capgo').classList.remove('on'); $('capres').disabled = false; $('capmode').disabled = false; dim.hidden = true;
+    root.classList.remove('rec'); status(); $('capgo').textContent = '● 記録開始'; $('capgo').classList.remove('on'); $('capres').disabled = false; $('capmode').disabled = false; dim.hidden = true; lock(false);
     if (app) {
       note('保存しています…'); await q;
       note((S.err ? '⚠ 保存中にエラーがありました: ' + S.err + '\n' : '') + S.lastSum + `\n保存しました: 端末の ${dirKind === 'DOCUMENTS' ? 'Documents' : 'Android/data/jp.yaeyama.depthmap/files'}/${dir}/`);
