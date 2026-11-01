@@ -42,8 +42,8 @@
   const dim = document.createElement('div');
   dim.id = 'capdim'; dim.hidden = true; dim.textContent = '記録は続いています\nタップで画面を戻す';
   document.body.appendChild(dim);
-  dim.onclick = () => { if (!lk.hidden) return; dim.hidden = true; }; // 海面曳航の記録中は長押しでだけ戻す（下の hold）
-  // 海面曳航の記録中は、波や水滴で触れても操作されないよう、中央の「撮影停止」（長押し）と少し下の「画面を暗く」だけにする。
+  dim.onclick = () => { if (!lk.hidden) return; dim.hidden = true; }; // 記録中は長押しでだけ戻す（下の hold）
+  // 記録中は（歩き・海面曳航とも）、波や水滴で触れても操作されないよう、中央の「撮影停止」（長押し）と少し下の「画面を暗く」だけにする。
   // 画面の縁には何も置かない。長押しで文字選択や「タップして検索」が出ないよう、選択・メニューも止める。
   const lk = document.createElement('div');
   lk.id = 'caplock'; lk.hidden = true;
@@ -299,7 +299,7 @@
     S.flushT = setInterval(flush, 3000);
     S.oriL = () => buf.push(`${f(performance.now(), 2)},screen_angle,${screen.orientation ? screen.orientation.angle : window.orientation},,,`);
     window.addEventListener('orientationchange', S.oriL); S.oriL();
-    root.classList.add('rec'); $('capgo').textContent = '■ 記録終了'; $('capgo').classList.add('on'); $('capres').disabled = true; $('capmode').disabled = true; lock(S.mode === 'tow'); status();
+    root.classList.add('rec'); $('capgo').textContent = '■ 記録終了'; $('capgo').classList.add('on'); $('capres').disabled = true; $('capmode').disabled = true; lock(true); status();
   }
   function newRec() { // 区切り録画の1本（video_001.mp4 …）。開始・終了の時刻は meta.segments と sensors.csv に残す
     const n = ++S.seg, name = `video_${String(n).padStart(3, '0')}.${S.ext}`, seg = {file: S.name + '_' + name};
