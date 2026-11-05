@@ -38,7 +38,7 @@ export function init(api) {
 export const has = () => ({land: !!tex, bottom: !!bot, bld: !!bld, port: !!portImg, rivers: !!land, trees: !!treeImg});
 
 function bil(I, gx, gy, out) {
-  const fx = (gx - GX0) / ST - 0.5, fy = (gy - GY0) / ST - 0.5;
+  const full = I.w === BEN.w, fx = (gx - (full ? 0 : GX0)) / ST - 0.5, fy = (gy - (full ? 0 : GY0)) / ST - 0.5; // seabed colours cover the whole grid, the land texture only the Ishigaki crop
   if (fx < 0 || fy < 0 || fx >= I.w - 1 || fy >= I.h - 1) return false;
   const i = fx | 0, j = fy | 0, ax = fx - i, ay = fy - j, d = I.d, p = (j * I.w + i) * 4, q = p + I.w * 4;
   for (let k = 0; k < 4; k++) out[k] = (d[p + k] * (1 - ax) + d[p + 4 + k] * ax) * (1 - ay) + (d[q + k] * (1 - ax) + d[q + 4 + k] * ax) * ay;
@@ -46,7 +46,7 @@ function bil(I, gx, gy, out) {
 }
 const tmp = [0, 0, 0, 0];
 export function landColor(gx, gy) { return tex && bil(tex, gx, gy, tmp) ? [tmp[0], tmp[1], tmp[2]] : null; }
-const BEN = {w: 5672, h: 4080};   // seabed-class raster covers the whole Yaeyama grid (20 m, origin 0,0)
+const BEN = {w: 5672, h: 4080};   // seabed-class and seabed-colour rasters cover the whole Yaeyama grid (20 m, origin 0,0)
 function bilBen(gx, gy, out) {
   const I = ben, fx = gx / ST - 0.5, fy = gy / ST - 0.5;
   if (!I || fx < 0 || fy < 0 || fx >= I.w - 1 || fy >= I.h - 1) return false;

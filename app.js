@@ -9,7 +9,8 @@ let META = null, STRUCT = [];
 // ---------- optional encryption (build_encrypted.py): data files are AES-GCM blobs, key from a passphrase ----------
 let ENC = null, KEY = null; // ENC = contents of data/key.json when the data is encrypted
 const b64 = u => btoa(String.fromCharCode(...new Uint8Array(u))), unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
-const dataURL = p => ENC ? p + '.enc' : p;
+const PLAIN_DATA = new Set(['data/v3/bottom.webp', 'data/v3/bottom_sat.webp']); // satellite seabed colours: published without encryption (user's choice, 2026-11-05)
+const dataURL = p => ENC && !PLAIN_DATA.has(p) ? p + '.enc' : p;
 async function deriveKey(pass) {
   const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
   return crypto.subtle.deriveKey({name: 'PBKDF2', salt: unb64(ENC.salt), iterations: ENC.iter, hash: 'SHA-256'}, base, {name: 'AES-GCM', length: 256}, true, ['decrypt']);
@@ -18,7 +19,7 @@ async function decrypt(buf, key) { const u = new Uint8Array(buf); return crypto.
 async function getData(p, opt) {
   const res = await fetch(dataURL(p), opt);
   if (!res.ok) throw new Error(res.status);
-  if (!ENC) return res.blob();
+  if (!ENC || PLAIN_DATA.has(p)) return res.blob();
   return new Blob([await decrypt(await res.arrayBuffer())]);
 }
 async function unlock() {
