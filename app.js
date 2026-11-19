@@ -22,8 +22,20 @@ async function getData(p, opt) {
   return new Blob([await decrypt(await res.arrayBuffer())]);
 }
 async function unlock() {
+  // a shared link (#...&k=...) carries the data key itself, so the receiver opens it without the passphrase
+  const hk = location.hash.match(/[#&]k=([A-Za-z0-9_-]+)/);
+  if (hk) {
+    try {
+      let r = hk[1].replace(/-/g, '+').replace(/_/g, '/'); while (r.length % 4) r += '=';
+      const key = await crypto.subtle.importKey('raw', unb64(r), 'AES-GCM', true, ['decrypt']); await decrypt(unb64(ENC.check), key);
+      KEY = key; localStorage.setItem('k', r);
+      history.replaceState(null, '', location.pathname + location.search + location.hash.replace(/&k=[A-Za-z0-9_-]+/, ''));
+      return;
+    } catch (e) { KEY = null; }
+  }
   try { const k = localStorage.getItem('k'); if (k) { KEY = await crypto.subtle.importKey('raw', unb64(k), 'AES-GCM', true, ['decrypt']); await decrypt(unb64(ENC.check)); return; } } catch (e) { KEY = null; }
   $('lock').hidden = false;
+  if (typeof lockExtra === 'function') lockExtra();
   await new Promise(done => {
     $('bUnlock').onclick = async () => {
       $('lockmsg').textContent = '確認中…';
