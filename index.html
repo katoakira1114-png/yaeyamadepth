@@ -61,6 +61,8 @@ button:active{transform:scale(.97)}
 .ops{display:flex;gap:4px;flex-shrink:0}.ops button{padding:6px 9px;font-size:13px}
 .memo{margin-top:4px;padding:6px 8px;background:rgba(255,255,255,.07);border-radius:6px;font-size:13px;white-space:pre-wrap;max-height:9em;overflow:auto}
 .th{width:72px;height:72px;object-fit:cover;border-radius:8px;margin:0 6px 6px 0;cursor:pointer;background:#123}
+.btn.pri{background:#1f6fd6;border-color:#5aa0ff}
+.btn{display:inline-block;text-decoration:none;font:inherit;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 14px}
 .fld{width:100%;font:inherit;padding:10px;border-radius:10px;border:1px solid var(--line);background:#0d1d52;color:var(--fg)}
 textarea.fld{min-height:7em;resize:vertical}
 select.fld{padding:8px}
@@ -119,7 +121,16 @@ progress{width:100%;height:10px;accent-color:#5aa0ff}
     <div class="row" style="margin:0 0 6px"><button class="pri" id="bWpHere">現在地を登録</button></div>
     <p><small>地図をタップして「ここを地点登録」でも登録できます。ピンをタップするとメモが読めます。</small></p>
     <div id="wplist"></div>
-    <div class="row"><button id="bWpGpx">書き出し（GPX）</button><button id="bWpClose">閉じる</button></div>
+    <div class="row"><button id="bWpShareAll">全部を共有（LINEなど）</button><button id="bWpGpx">書き出し（GPX）</button><button id="bWpClose">閉じる</button></div>
+  </div>
+</div>
+
+<div class="sheet" id="sh" hidden style="z-index:13">
+  <div class="card">
+    <h2>地点を共有</h2>
+    <p>このリンクを送ると、相手はアプリを入れずにブラウザで地点入りの地図を見られます（合言葉も要りません）。<b>リンクを転送された人も見られる</b>ので、送る相手に気をつけてください。</p>
+    <p><textarea id="shtxt" class="fld" readonly style="min-height:6em"></textarea></p>
+    <div class="row"><a class="btn pri" id="bShLine" href="#" target="_blank" rel="noopener">LINEで送る</a><button id="bShCopy">コピー</button><button id="bShClose">閉じる</button></div>
   </div>
 </div>
 
@@ -206,6 +217,7 @@ progress{width:100%;height:10px;accent-color:#5aa0ff}
     <p><input id="pass" type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" style="width:100%;font:inherit;padding:10px;border-radius:10px;border:1px solid var(--line);background:#0d1d52;color:var(--fg)"></p>
     <p id="lockmsg" style="color:#ffb3a0"></p>
     <div class="row"><button class="pri" id="bUnlock">開く</button></div>
+    <div id="lockshared" hidden style="margin-top:12px;padding-top:8px;border-top:1px solid var(--line)"></div>
   </div>
 </div>
 

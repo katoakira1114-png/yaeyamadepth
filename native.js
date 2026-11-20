@@ -40,6 +40,9 @@ const NATIVE = (() => {
     await P.Share.share({title: name, files: [uri]});
   }
 
+  // text + link through the Android share sheet (LINE etc.)
+  const shareText = (title, text, url) => P.Share.share({title, text, url, dialogTitle: '共有'});
+
   P.App.addListener('backButton', () => {
     const cap = document.getElementById('cap');
     if (cap && !cap.hidden) { document.getElementById('capclose').click(); return; }
@@ -50,5 +53,5 @@ const NATIVE = (() => {
     P.App.minimizeApp();
   });
 
-  return {startGPS, openLocationSettings, dictate, stopDictate, shareFile};
+  return {startGPS, openLocationSettings, dictate, stopDictate, shareFile, shareText};
 })();

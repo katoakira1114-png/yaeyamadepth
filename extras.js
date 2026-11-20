@@ -81,6 +81,82 @@ async function addWaypoint(lat, lon, name) {
   return w;
 }
 
+// ---------- share waypoints by link (LINE etc.): the points travel inside the URL (#pts=...), no server ----------
+// The receiver opens the link in a normal browser; no app needed. The link also carries the data key (see app.js unlock).
+const SHARE_BASE = 'https://katoakira1114-png.github.io/yaeyamadepth/';
+const b64u = s => { const u = new TextEncoder().encode(s); let b = ''; for (let i = 0; i < u.length; i++) b += String.fromCharCode(u[i]); return btoa(b).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+const unb64u = s => { const b = atob(s.replace(/-/g, '+').replace(/_/g, '/')); return new TextDecoder().decode(Uint8Array.from(b, c => c.charCodeAt(0))); };
+function shareURL(list) {
+  const a = list.map(w => { const r = [w.name, w.lat, w.lon, w.d != null ? w.d : null]; if (w.note) r.push(w.note.slice(0, 300)); return r; });
+  const web = location.protocol === 'https:' && !NATIVE && !/^(localhost|127\.)/.test(location.hostname);
+  let k = ''; try { k = localStorage.getItem('k') || ''; } catch (e) {}
+  // the key goes along so the receiver needs no passphrase (user's choice, 2026-11-19); anyone the link is forwarded to can see the map
+  return (web ? location.origin + location.pathname : SHARE_BASE) + '#pts=' + b64u(JSON.stringify(a)) + (k ? '&k=' + k.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') : '');
+}
+function readShared(hash) {
+  const m = (hash || '').match(/[#&]pts=([A-Za-z0-9_-]+)/); if (!m) return null;
+  try {
+    const a = JSON.parse(unb64u(m[1])); if (!Array.isArray(a)) return null;
+    return a.slice(0, 300).map((r, i) => Array.isArray(r) ? {id: 's' + i, name: String(r[0] || `地点${i + 1}`).slice(0, 60), lat: +r[1], lon: +r[2], d: r[3] == null || !isFinite(+r[3]) ? null : +r[3], note: String(r[4] || '').slice(0, 300)} : null)
+      .filter(w => w && isFinite(w.lat) && isFinite(w.lon) && Math.abs(w.lat) <= 90 && Math.abs(w.lon) <= 180);
+  } catch (e) { return null; }
+}
+const SHARED_NEW = readShared(location.hash); // points that arrived with this page load
+let shared = SHARED_NEW || (() => { try { return JSON.parse(localStorage.getItem('shared') || '[]'); } catch (e) { return []; } })();
+if (SHARED_NEW) try { localStorage.setItem('shared', JSON.stringify(shared)); } catch (e) {}
+const gmap = w => `https://www.google.com/maps/search/?api=1&query=${w.lat},${w.lon}`;
+
+async function sharePoints(list) {
+  if (!list.length) { toast('共有する地点がありません'); return; }
+  const url = shareURL(list), one = list.length === 1 ? list[0] : null;
+  const title = one ? `地点「${one.name}」` : `地点 ${list.length}件`;
+  const text = `${title}${one && one.d != null ? `（推定水深 ${one.d} m）` : ''}\n八重山 水深マップで見られます（ブラウザで開けます）`;
+  if (NATIVE && NATIVE.shareText) { try { await NATIVE.shareText(title, text, url); return; } catch (e) { if (/cancel/i.test(e.message || '')) return; } }
+  else if (navigator.share) { try { await navigator.share({title, text, url}); return; } catch (e) { if (e.name === 'AbortError') return; } }
+  // no share sheet (PC browser etc.): show the link with copy / LINE buttons
+  $('shtxt').value = text + '\n' + url;
+  $('bShLine').href = 'https://line.me/R/share?text=' + encodeURIComponent(text + '\n' + url);
+  $('sh').hidden = false;
+}
+$('bShCopy').onclick = async () => {
+  try { await navigator.clipboard.writeText($('shtxt').value); toast('コピーしました。LINEに貼り付けてください'); }
+  catch (e) { $('shtxt').select(); document.execCommand && document.execCommand('copy'); toast('コピーしました'); }
+};
+$('bShClose').onclick = () => { $('sh').hidden = true; };
+
+// shown on the passphrase screen, so a receiver without the passphrase still sees where the points are
+function lockExtra() {
+  const el = $('lockshared'); if (!el) return;
+  if (!SHARED_NEW || !SHARED_NEW.length) { el.hidden = true; return; }
+  el.innerHTML = `<p><b>共有された地点が ${SHARED_NEW.length} 件あります。</b>リンクが古くて開けないときは、合言葉を入れると水深図の上に表示します。</p>`
+    + SHARED_NEW.map(w => `<div class="li"><div><b>${esc(w.name)}</b><br><small>${w.d != null ? '推定水深 ' + w.d + ' m ・ ' : ''}${w.lat.toFixed(5)}, ${w.lon.toFixed(5)}</small>${w.note ? `<div class="memo">${esc(w.note)}</div>` : ''}</div>
+      <div class="ops"><a class="btn" href="${gmap(w)}" target="_blank" rel="noopener">Googleマップ</a></div></div>`).join('');
+  el.hidden = false;
+}
+function sharedAt(pt) { return shared.find(w => { const [gx, gy] = ll2g(w.lat, w.lon); return Math.hypot(gx - pt[0], gy - pt[1]) < 1; }); }
+function showSharedOnArrival() {
+  if (!SHARED_NEW || !SHARED_NEW.length) return;
+  setFollow(false);
+  const g = SHARED_NEW.map(w => ll2g(w.lat, w.lon)), xs = g.map(p => p[0]), ys = g.map(p => p[1]);
+  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  view.cx = (x0 + x1) / 2; view.cy = (y0 + y1) / 2;
+  view.s = Math.min(VW / (x1 - x0 + 1500), VH / (y1 - y0 + 1500), 0.3 * dpr);
+  if (SHARED_NEW.length === 1) { tapPt = g[0]; showTap(); }
+  requestDraw();
+  toast(`共有された地点 ${SHARED_NEW.length} 件を表示しています（水色のピン）`);
+}
+async function saveShared(w) {
+  if (wpts.some(x => Math.abs(x.lat - w.lat) < 1e-6 && Math.abs(x.lon - w.lon) < 1e-6)) { toast('すでに自分の地点にあります'); return; }
+  const n = await addWaypoint(w.lat, w.lon, w.name);
+  if (w.note) { n.note = w.note; await saveWpts(); }
+}
+function clearShared() {
+  if (!confirm('共有された地点を地図から消しますか？（自分の地点は残ります）')) return;
+  shared = []; try { localStorage.removeItem('shared'); } catch (e) {}
+  if (/[#&]pts=/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
+  requestDraw(); openWp();
+}
+
 async function resizeJPEG(file, max) {
   const bmp = await createImageBitmap(file);
   const k = Math.min(1, max / Math.max(bmp.width, bmp.height)), c = document.createElement('canvas');
@@ -184,6 +260,12 @@ function drawOverlays() {
     ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx - r * .8, sy - r * 1.6); ctx.arc(sx, sy - r * 2, r, Math.PI * .8, Math.PI * .2); ctx.closePath(); ctx.fill(); ctx.stroke();
     if (label) { ctx.lineWidth = 3 * dpr; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.strokeText(w.name, sx + r * 1.4, sy - r * 2); ctx.fillStyle = '#fff'; ctx.fillText(w.name, sx + r * 1.4, sy - r * 2); }
   }
+  for (const w of shared) {
+    const [sx, sy] = g2s(...ll2g(w.lat, w.lon)), r = 7 * dpr;
+    ctx.fillStyle = '#29c5ff'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 * dpr;
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx - r * .8, sy - r * 1.6); ctx.arc(sx, sy - r * 2, r, Math.PI * .8, Math.PI * .2); ctx.closePath(); ctx.fill(); ctx.stroke();
+    if (label) { ctx.lineWidth = 3 * dpr; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.strokeText(w.name, sx + r * 1.4, sy - r * 2); ctx.fillStyle = '#fff'; ctx.fillText(w.name, sx + r * 1.4, sy - r * 2); }
+  }
   for (const p of photos) {
     if (showTrack === false && dayKey(p.t) === shownDay) continue;
     const [sx, sy] = g2s(...ll2g(p.lat, p.lon)), r = 7 * dpr;
@@ -197,13 +279,14 @@ function tapHit(sx, sy) {
   let best = null, bd = lim;
   for (const p of photos) { const [x, y] = g2s(...ll2g(p.lat, p.lon)), d = Math.hypot(x - sx, y - sy); if (d < bd) { bd = d; best = p; } }
   if (best) { openPhoto(best.id); return true; }
-  for (const w of wpts) { const [x, y] = g2s(...ll2g(w.lat, w.lon)), d = Math.hypot(x - sx, y - (sy + 14 * dpr)); if (d < lim) { tapPt = ll2g(w.lat, w.lon); requestDraw(); showTap(); return true; } }
+  for (const w of [...wpts, ...shared]) { const [x, y] = g2s(...ll2g(w.lat, w.lon)), d = Math.hypot(x - sx, y - (sy + 14 * dpr)); if (d < lim) { tapPt = ll2g(w.lat, w.lon); requestDraw(); showTap(); return true; } }
   return false;
 }
 function wpAt(pt) { return wpts.find(w => { const [gx, gy] = ll2g(w.lat, w.lon); return Math.hypot(gx - pt[0], gy - pt[1]) < 1; }); }
 function tapExtra(pt) {
-  const w = wpAt(pt);
-  return w ? `<br><b style="color:#ff8cc6">登録地点「${esc(w.name)}」</b>（${new Date(w.t).toLocaleString('ja-JP')}）${w.note ? `<div class="memo">${esc(w.note).replace(/\n/g, '<br>')}</div>` : ''}<br><button id="bTapEdit" data-id="${w.id}" style="margin-top:6px;padding:5px 12px">詳細・メモ</button>`
+  const w = wpAt(pt), sw = w ? null : sharedAt(pt);
+  if (sw) return `<br><b style="color:#7fdcff">共有された地点「${esc(sw.name)}」</b>${sw.note ? `<div class="memo">${esc(sw.note).replace(/\n/g, '<br>')}</div>` : ''}<br><button id="bTapSaveSh" style="margin-top:6px;padding:5px 12px">自分の地点に保存</button>`;
+  return w ? `<br><b style="color:#ff8cc6">登録地点「${esc(w.name)}」</b>（${new Date(w.t).toLocaleString('ja-JP')}）${w.note ? `<div class="memo">${esc(w.note).replace(/\n/g, '<br>')}</div>` : ''}<br><button id="bTapEdit" data-id="${w.id}" style="margin-top:6px;padding:5px 12px">詳細・メモ</button> <button id="bTapShare" data-id="${w.id}" style="margin-top:6px;padding:5px 12px">LINEなどで共有</button>`
     : `<br><button id="bTapReg" style="margin-top:6px;padding:5px 12px">ここを地点登録</button>`;
 }
 function tapWire() {
@@ -211,6 +294,10 @@ function tapWire() {
   if (b) b.onclick = async () => { const [lat, lon] = g2ll(tapPt[0], tapPt[1]); const w = await addWaypoint(lat, lon); showTap(); openWpEdit(w); };
   const e = $('bTapEdit');
   if (e) e.onclick = () => openWpEdit(wpts.find(w => w.id === e.dataset.id));
+  const sh = $('bTapShare');
+  if (sh) sh.onclick = () => { const w = wpts.find(x => x.id === sh.dataset.id); if (w) sharePoints([w]); };
+  const ss = $('bTapSaveSh');
+  if (ss) ss.onclick = async () => { const w = sharedAt(tapPt); if (w) { await saveShared(w); showTap(); } };
 }
 
 // ---------- sheets ----------
@@ -218,14 +305,23 @@ function openWp() {
   const rows = wpts.slice().reverse().map(w => {
     const dist = here ? ' ・ ' + fmtDist(Math.hypot(...[0, 1].map(i => ll2g(w.lat, w.lon)[i] - [here.gx, here.gy][i]))) : '';
     return `<div class="li"><div><b>${esc(w.name)}</b><br><small>${w.d != null ? w.d + ' m' : '—'} ・ ${new Date(w.t).toLocaleString('ja-JP', {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'})}${dist}</small>${w.note ? `<div class="memo">${esc(w.note)}</div>` : ''}</div>
-      <div class="ops"><button data-go="${w.id}">地図</button><button data-ren="${w.id}">詳細</button></div></div>`;
+      <div class="ops"><button data-go="${w.id}">地図</button><button data-ren="${w.id}">詳細</button><button data-sh="${w.id}">共有</button></div></div>`;
   }).join('') || '<p>まだ登録した地点はありません。</p>';
-  $('wplist').innerHTML = rows;
+  const srows = shared.length ? `<h3 style="color:#7fdcff">共有された地点（${shared.length}件）</h3>` + shared.map(w => `<div class="li"><div><b>${esc(w.name)}</b><br><small>${w.d != null ? w.d + ' m' : '—'}</small>${w.note ? `<div class="memo">${esc(w.note)}</div>` : ''}</div>
+      <div class="ops"><button data-sgo="${w.id}">地図</button><button data-ssave="${w.id}">保存</button></div></div>`).join('')
+    + '<div class="row"><button id="bShClear" style="font-size:13px;padding:6px 12px">共有された地点を消す</button></div>' : '';
+  $('wplist').innerHTML = rows + srows;
+  $('bWpShareAll').disabled = !wpts.length;
+  if ($('bShClear')) $('bShClear').onclick = clearShared;
   $('wp').hidden = false;
 }
 $('wplist').onclick = async e => {
   const b = e.target.closest('button'); if (!b) return;
-  const id = b.dataset.go || b.dataset.ren || b.dataset.del, w = wpts.find(x => x.id === id); if (!w) return;
+  const sid = b.dataset.sgo || b.dataset.ssave, sw = sid && shared.find(x => x.id === sid);
+  if (sw && b.dataset.sgo) { $('wp').hidden = true; goTo(sw.lat, sw.lon); tapPt = ll2g(sw.lat, sw.lon); showTap(); return; }
+  if (sw && b.dataset.ssave) { await saveShared(sw); openWp(); return; }
+  const id = b.dataset.go || b.dataset.ren || b.dataset.del || b.dataset.sh, w = wpts.find(x => x.id === id); if (!w) return;
+  if (b.dataset.sh) { sharePoints([w]); return; }
   if (b.dataset.go) { $('wp').hidden = true; goTo(w.lat, w.lon); tapPt = ll2g(w.lat, w.lon); showTap(); }
   if (b.dataset.ren) openWpEdit(w);
 };
@@ -281,6 +377,7 @@ $('bMic').onclick = () => {
   try { rec.start(); $('bMic').classList.add('on'); toast('話してください（もう一度押すと終了）'); } catch (e) { stopDictation(); }
 };
 $('bWpGpx').onclick = () => exportGPX('地点', [], wpts, []);
+$('bWpShareAll').onclick = () => sharePoints(wpts);
 $('bWpClose').onclick = () => { $('wp').hidden = true; };
 
 async function openTrack(day) {
@@ -529,4 +626,5 @@ async function extrasInit() {
   [wpts, photos] = [(await kv.get('wpts').catch(() => null)) || [], (await kv.get('photos').catch(() => null)) || []];
   trk.pts = await loadTrack(trk.day);
   requestDraw();
+  showSharedOnArrival();
 }
